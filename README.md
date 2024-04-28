@@ -1,2 +1,32 @@
 # HappeningHound
-Journaling anything with Bot on Slack
+
+HappeningHoundは、Slackでのコミュニケーションを自動的に記録し、後から振り返ることができるボットです。指定したチャンネルに投稿された内容をJSON形式で保存します。
+
+## 説明
+
+チームのコミュニケーションを記録し、後から参照できるようにすることは重要です。しかし、手動で記録を取ることは手間がかかり、ミスが発生する可能性があります。HappeningHoundを使えば、Slackでのやり取りを自動的に記録できるので、安心して大切な情報を失うことなく、後から振り返ることができます。
+機能
+
+* Slackの指定したチャンネルに投稿された内容を監視し、記録します。
+* メッセージ本文、投稿時刻、添付ファイル(画像など)をJSON形式で保存します。
+* 保存先はGoogle Drive上のファイルです。
+* 対象とするチャンネルを作成し、Google Drive上にファイルを作成するコマンドがあります。
+
+## 使い方
+
+1. Botをインストールし、Slackワークスペースに追加します。
+2. create-channelコマンドを使って、記録対象のチャンネルを作成します。
+3. create-drive-fileコマンドを使って、Google Drive上に記録ファイルを作成します。
+4. 対象チャンネルでメッセージをやり取りすると、その内容がJSON形式で記録ファイルに自動的に保存されます。
+
+## 設定
+
+設定ファイル(config.yaml)で以下の項目を設定できます。
+
+* slack_token: BotのSlack APIトークン
+* google_credentials: Google Drive APIの認証情報
+* drive_folder_id: 記録ファイルを保存するGoogleドライブのフォルダID
+
+## ライセンス
+
+* MITライセンスの元でリリースされています。詳細は[LICENSE](./LICENSE)ファイルを参照してください。
