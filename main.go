@@ -2,15 +2,13 @@ package happeninghound
 
 import (
 	"context"
+	"fmt"
+	"github.com/johtani/happeninghound/client"
+	"github.com/slack-go/slack/socketmode"
 	"log"
 	"os"
 
 	"github.com/slack-go/slack"
-	"github.com/slack-go/slack/socketmode"
-
-	"github.com/johtani/happneinghound/channels"
-	"github.com/johtani/happneinghound/client/gdrive"
-	"github.com/johtani/happneinghound/client/handlers"
 )
 
 // Slack API トークンと Google Drive API クレデンシャルを設定
@@ -20,18 +18,30 @@ const (
 )
 
 func main() {
+
+	// チャンネルデータの管理
+	channels, err := client.NewChannels()
+	if err != nil {
+		panic(err)
+	}
+
 	// Slack API クライアント初期化
 	api := slack.New(slackToken, slack.OptionDebug(true))
+	resp, err := api.AuthTest()
+	if err != nil {
+		panic(err)
+	}
+	botID := fmt.Sprintf("<@%v>", resp.UserID)
 
 	// Google Drive API クライアント初期化
 	ctx := context.Background()
-	driveClient, err := gdrive.NewDrive(ctx, googleCreds)
+	driveClient, err := client.NewDrive(ctx, googleCreds)
 	if err != nil {
 		panic(err)
 	}
 
 	// 既存のチャンネルデータを読み込む
-	_, err = channels.LoadChannelData()
+	_, err = client.LoadChannelData()
 	if err != nil {
 		panic(err)
 	}
@@ -42,16 +52,13 @@ func main() {
 		socketmode.OptionDebug(true),
 		socketmode.OptionLog(log.New(os.Stdout, "socketmode: ", log.Lshortfile|log.LstdFlags)),
 	)
+	socketModeHandler := socketmode.NewSocketmodeHandler(socketClient)
 
 	// スラッシュコマンドハンドラ登録
-	socketClient.Command("/create-channel", func(ctx context.Context, client *slack.Client, cmd *slack.SlashCommand) error {
-		return handlers.SlashCommandHandler(api, driveClient, cmd)
-	})
+	socketModeHandler.HandleSlashCommand("/create-channel", client.SlashCommandHandler(driveClient, channels))
 
 	// メッセージイベントハンドラ登録
-	socketClient.Event("message", func(ctx context.Context, client *slack.Client, event *slack.MessageEvent) error {
-		return handlers.EventHandler(api, driveClient, event)
-	})
+	socketModeHandler.HandleEvents("message", client.EventHandler(driveClient, channels, botID))
 
 	socketClient.Run()
 }
