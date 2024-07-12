@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
 	"strings"
@@ -11,7 +12,7 @@ import (
 )
 
 // EventHandler チャンネルごとのメッセージ受信ハンドラー: EventHandler はメッセージイベントを処理します。
-func EventHandler(driveClient *Drive, channels *Channels, botID string) socketmode.SocketmodeHandlerFunc {
+func EventHandler(channels *Channels, botID string) socketmode.SocketmodeHandlerFunc {
 	return func(event *socketmode.Event, client *socketmode.Client) {
 
 		eventPayload, ok := event.Data.(slackevents.EventsAPIEvent)
@@ -44,7 +45,7 @@ func EventHandler(driveClient *Drive, channels *Channels, botID string) socketmo
 			"message":   p.Message,
 			"channel": map[string]string{
 				"id":   channelID,
-				"name": channel.ChannelName,
+				"name": channel.Name,
 			},
 		}
 		jsonData, err := json.Marshal(data)
@@ -53,22 +54,7 @@ func EventHandler(driveClient *Drive, channels *Channels, botID string) socketmo
 			return
 		}
 
-		// ファイルIDからファイルを取得
-		fileID, e := channels.GetFileID(channelID)
-		if e != nil {
-			client.Debugf("チャンネル %s に対応するファイルが見つかりません", channel.ChannelName)
-			return
-		}
-
-		// ファイルの存在確認
-		_, err = driveClient.GetFile(fileID)
-		if err != nil {
-			client.Debugf("ファイル取得エラー: %v", err)
-			return
-		}
-
-		// Google Drive のファイルに追記
-		err = driveClient.UpdateFile(fileID, string(jsonData))
+		err = channel.AppendMessage(string(jsonData))
 		if err != nil {
 			client.Debugf("ファイル更新エラー: %v", err)
 			return
@@ -77,9 +63,10 @@ func EventHandler(driveClient *Drive, channels *Channels, botID string) socketmo
 }
 
 // SlashCommandHandler チャンネル生成コマンドのハンドラー: SlashCommandHandler はスラッシュコマンドを処理します。
-func SlashCommandHandler(driveClient *Drive, channels *Channels) socketmode.SocketmodeHandlerFunc {
+func SlashCommandHandler(channels *Channels) socketmode.SocketmodeHandlerFunc {
 	return func(event *socketmode.Event, client *socketmode.Client) {
 		ev, ok := event.Data.(slack.SlashCommand)
+		msg := []string{""}
 		if !ok {
 			client.Debugf("skipped command: %v", event)
 		}
@@ -87,27 +74,61 @@ func SlashCommandHandler(driveClient *Drive, channels *Channels) socketmode.Sock
 
 		if ev.Command != "/create-channel" {
 			client.Debugf("不明コマンド: %v", ev.Command)
-			return
-		}
+			msg = append(msg, "不明コマンド")
+		} else {
+			// チャンネル名 説明が入力と想定
+			channelName := strings.SplitN(ev.Text, " ", 1)
 
-		// チャンネル作成
-		channelName := ev.Text
-		channel, err := client.CreateConversationContext(context.Background(), slack.CreateConversationParams{ChannelName: channelName, IsPrivate: false})
+			// すでにチャンネルがあるかをチェックする
+			exists, msg2 := ExistsChannel(channelName[0], client)
+			msg = append(msg, msg2)
+			if !exists {
+				// チャンネル作成
+				channel, err := client.CreateConversationContext(context.Background(), slack.CreateConversationParams{ChannelName: channelName[0], IsPrivate: false})
+				if err != nil {
+					client.Debugf("チャンネル作成エラー: %v", err)
+					msg = append(msg, "チャンネル作成エラー")
+				}
+
+				// チャンネル用のファイルを追加
+				channels.Add(channel.ID, channelName[1], channels.basedir, channelName[0]+".jsonl")
+				channels.Save()
+			}
+		}
+		_, _, err := client.PostMessage(ev.ChannelID, slack.MsgOptionText(strings.Join(msg, "\n"), false))
 		if err != nil {
-			client.Debugf("チャンネル作成エラー: %v", err)
+			fmt.Printf("######### : failed posting message: %v\n", err)
 			return
 		}
-
-		// Google Drive に JSON ファイル作成
-		createdFile, err := driveClient.CreateFile(channelName + ".json")
-		if err != nil {
-			client.Debugf("ファイル作成エラー: %v", err)
-			return
-		}
-
-		// 既存のチャンネルデータを読み込む
-		channels.Add(channel.ID, createdFile.Id)
-		channels.Save()
-
 	}
+}
+
+func ExistsChannel(name string, client *socketmode.Client) (bool, string) {
+	msg := ""
+	found := false
+	finish := false
+	cursor := ""
+	for finish {
+		list, next, err := client.GetConversationsContext(context.Background(), &slack.GetConversationsParameters{Cursor: cursor, Limit: 1000})
+		if err != nil {
+			client.Debugf("チャンネルリスト取得エラー: %v", err)
+			msg = "チャンネルリスト取得エラー"
+			found = true
+			finish = true
+		}
+		if len(next) == 0 {
+			finish = true
+		} else {
+			cursor = next
+		}
+		for _, channel := range list {
+			if channel.Name == name {
+				finish = true
+				found = true
+				msg = fmt.Sprintf("すでに %v チャンネルは存在します。", name)
+				break
+			}
+		}
+	}
+	return found, msg
 }

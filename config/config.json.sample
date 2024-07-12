@@ -1,0 +1,6 @@
+{
+  "bot_token": "xoxb-<YOUR TOKEN>",
+  "app_token": "xapp-<YOUR TOKEN>",
+  "debug": false,
+  "basedir": "/YOUR/PATH/TO"
+}
