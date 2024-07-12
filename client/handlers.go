@@ -15,6 +15,7 @@ import (
 func EventHandler(channels *Channels, botID string) socketmode.SocketmodeHandlerFunc {
 	return func(event *socketmode.Event, client *socketmode.Client) {
 
+		client.Debugf("Starting message handling...")
 		eventPayload, ok := event.Data.(slackevents.EventsAPIEvent)
 		if !ok {
 			client.Debugf("skipped Envelope: %v", event)
@@ -26,38 +27,56 @@ func EventHandler(channels *Channels, botID string) socketmode.SocketmodeHandler
 			client.Debugf("skipped Payload Event: %v", event)
 			return
 		}
-		if !strings.HasPrefix(p.Text, botID) {
-			client.Debugf("skipped message")
-			return
-		}
+		if len(p.Text) > 0 {
+			botMention := fmt.Sprintf("<@%v>", botID)
+			if strings.HasPrefix(p.Text, botMention) {
+				client.Debugf("skipped message / bot mention")
+				return
+			} else if p.User == botID {
+				client.Debugf("skipped message / bot message")
+				return
+			} else if p.SubType != "" {
+				client.Debugf("skipped message / subtype[%s]", p.SubType)
+				return
+			}
+			client.Debugf("OK for adding message")
 
-		// メッセージ情報取得
-		channelID := p.Channel
-		channel, err := channels.GetChannelData(channelID)
-		if err != nil {
-			client.Debugf("チャンネル情報取得エラー: %v", err)
-			return
-		}
+			// メッセージ情報取得
+			channelID := p.Channel
+			channel, err := channels.GetChannelData(channelID)
+			if err != nil {
+				client.Debugf("チャンネル情報取得エラー: %v", err)
+				_, _, err := client.PostMessage(channelID, slack.MsgOptionText(fmt.Sprintf("チャンネル情報取得エラー: %v", err), false))
+				if err != nil {
+					fmt.Printf("######### : failed posting message: %v\n", err)
+				}
+				return
+			}
 
-		// JSON データ作成
-		data := map[string]interface{}{
-			"timestamp": p.EventTimeStamp,
-			"message":   p.Message,
-			"channel": map[string]string{
-				"id":   channelID,
-				"name": channel.Name,
-			},
-		}
-		jsonData, err := json.Marshal(data)
-		if err != nil {
-			client.Debugf("JSON 変換エラー: %v", err)
-			return
-		}
+			// JSON データ作成
+			data := map[string]interface{}{
+				"timestamp": p.EventTimeStamp,
+				"message":   p.Text,
+				"channel": map[string]string{
+					"id":   channelID,
+					"name": channel.Name,
+				},
+			}
+			jsonData, err := json.Marshal(data)
+			if err != nil {
+				client.Debugf("JSON 変換エラー: %v", err)
+				return
+			}
 
-		err = channel.AppendMessage(string(jsonData))
-		if err != nil {
-			client.Debugf("ファイル更新エラー: %v", err)
-			return
+			err = channel.AppendMessage(string(jsonData))
+			if err != nil {
+				client.Debugf("ファイル更新エラー: %v", err)
+				_, _, err := client.PostMessage(channelID, slack.MsgOptionText(fmt.Sprintf("ファイル更新エラー: %v", err), false))
+				if err != nil {
+					fmt.Printf("######### : failed posting message: %v\n", err)
+				}
+				return
+			}
 		}
 	}
 }
@@ -77,22 +96,48 @@ func SlashCommandHandler(channels *Channels) socketmode.SocketmodeHandlerFunc {
 			msg = append(msg, "不明コマンド")
 		} else {
 			// チャンネル名 説明が入力と想定
-			channelName := strings.SplitN(ev.Text, " ", 1)
+			channelName := []string{ev.Text, ""}
+			if strings.Count(ev.Text, " ") > 1 {
+				channelName = strings.SplitN(ev.Text, " ", 2)
+			}
 
 			// すでにチャンネルがあるかをチェックする
 			exists, msg2 := ExistsChannel(channelName[0], client)
 			msg = append(msg, msg2)
 			if !exists {
 				// チャンネル作成
-				channel, err := client.CreateConversationContext(context.Background(), slack.CreateConversationParams{ChannelName: channelName[0], IsPrivate: false})
+				channel, err := client.CreateConversationContext(context.Background(),
+					slack.CreateConversationParams{
+						ChannelName: channelName[0],
+						IsPrivate:   false,
+					})
+				errFlg := false
 				if err != nil {
 					client.Debugf("チャンネル作成エラー: %v", err)
 					msg = append(msg, "チャンネル作成エラー")
+					errFlg = true
 				}
 
-				// チャンネル用のファイルを追加
-				channels.Add(channel.ID, channelName[1], channels.basedir, channelName[0]+".jsonl")
-				channels.Save()
+				if channel != nil {
+					_, err = client.SetTopicOfConversation(channel.ID, channelName[1])
+					if err != nil {
+						client.Debugf("チャンネルトピック設定エラー: %v", err)
+						msg = append(msg, "チャンネルトピック設定エラー")
+					}
+
+					_, err = client.InviteUsersToConversationContext(context.Background(), channel.ID, channels.authorID)
+					if err != nil {
+						client.Debugf("チャンネルトピック設定エラー: %v", err)
+						msg = append(msg, "チャンネルトピック設定エラー")
+					}
+				}
+
+				if !errFlg {
+					// チャンネル用のファイルを追加
+					channels.Add(channel.ID, channelName[0], channelName[1], channels.basedir)
+					channels.Save()
+					msg = append(msg, fmt.Sprintf("%vを作成しました", channelName[0]))
+				}
 			}
 		}
 		_, _, err := client.PostMessage(ev.ChannelID, slack.MsgOptionText(strings.Join(msg, "\n"), false))

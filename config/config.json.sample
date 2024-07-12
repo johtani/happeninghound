@@ -2,5 +2,6 @@
   "bot_token": "xoxb-<YOUR TOKEN>",
   "app_token": "xapp-<YOUR TOKEN>",
   "debug": false,
-  "basedir": "/YOUR/PATH/TO"
+  "basedir": "/YOUR/PATH/TO",
+  "author_id": "YOUR_SLACK_USER_ID"
 }

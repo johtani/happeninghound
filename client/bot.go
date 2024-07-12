@@ -23,6 +23,7 @@ type Config struct {
 	BotToken string `json:"bot_token"`
 	Debug    bool   `json:"debug"`
 	BaseDir  string `json:"basedir"`
+	AuthorID string `json:"author_id"`
 }
 
 const ConfigFileName = "./config/config.json"
@@ -42,6 +43,7 @@ func (c Config) validate() error {
 	if !strings.HasPrefix(c.BotToken, "xoxb-") {
 		errs = append(errs, fmt.Sprintf("bot_token must have the prefix \"xoxb-\"."))
 	}
+	// TODO basedir, authoridのチェック？
 	if len(errs) > 0 {
 		return fmt.Errorf(strings.Join(errs, "\n"))
 	}
@@ -72,7 +74,7 @@ func Run(ctx context.Context) error {
 	config := loadConfigFromFile()
 
 	// 既存のチャンネルデータを読み込む
-	channels, err := NewChannels(config.BaseDir)
+	channels, err := NewChannels(config.BaseDir, config.AuthorID)
 	if err != nil {
 		return err
 	}
@@ -86,12 +88,12 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	botID := fmt.Sprintf("<@%v>", resp.UserID)
+	botID := resp.UserID
 
 	// SocketMode ハンドラ登録
 	socketClient := socketmode.New(
 		api,
-		socketmode.OptionDebug(true),
+		socketmode.OptionDebug(config.Debug),
 		socketmode.OptionLog(log.New(os.Stdout, "sm: ", log.Lshortfile|log.LstdFlags)),
 	)
 	socketModeHandler := socketmode.NewSocketmodeHandler(socketClient)

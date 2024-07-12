@@ -1,4 +1,4 @@
-package happeninghound
+package main
 
 import (
 	"context"
