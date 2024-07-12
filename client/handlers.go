@@ -97,7 +97,7 @@ func SlashCommandHandler(channels *Channels) socketmode.SocketmodeHandlerFunc {
 		} else {
 			// チャンネル名 説明が入力と想定
 			channelName := []string{ev.Text, ""}
-			if strings.Count(ev.Text, " ") > 1 {
+			if strings.Count(ev.Text, " ") > 0 {
 				channelName = strings.SplitN(ev.Text, " ", 2)
 			}
 
