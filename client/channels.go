@@ -3,6 +3,7 @@ package client
 import (
 	"encoding/csv"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 )
@@ -36,14 +37,14 @@ func NewChannels(basedir, authorID string) (*Channels, error) {
 // LoadChannelData は CSV ファイルからチャンネルデータを読み込みます。
 func LoadChannelData(basedir string) ([]ChannelData, error) {
 	filepath := filepath.Join(basedir, csvFilePath)
-	println(fmt.Sprintf("loading %s...", filepath))
+	slog.Info(fmt.Sprintf("loading %s...", filepath))
 	file, err := os.Open(filepath)
 	if err != nil {
 		// ファイルが存在しない場合は空のデータで返す
 		if os.IsNotExist(err) {
 			return []ChannelData{}, nil
 		}
-		return nil, fmt.Errorf("CSV ファイルオープンエラー: %v", err)
+		return nil, fmt.Errorf("CSV ファイルオープンエラー: %w", err)
 	}
 	defer file.Close()
 
@@ -62,7 +63,7 @@ func LoadChannelData(basedir string) ([]ChannelData, error) {
 			Name:        record[2],
 			Description: record[3],
 		})
-		println(fmt.Sprintf("  Name[%s] : Path[%s]", record[2], record[1]))
+		slog.Info(fmt.Sprintf("  Name[%s] : Path[%s]", record[2], record[1]))
 	}
 	return data, nil
 }
@@ -70,7 +71,7 @@ func LoadChannelData(basedir string) ([]ChannelData, error) {
 // Save はチャンネルデータを CSV ファイルに保存します。
 func (c *Channels) Save() error {
 	filepath := filepath.Join(c.basedir, csvFilePath)
-	println(fmt.Sprintf("writing %s...", filepath))
+	slog.Info(fmt.Sprintf("writing %s...", filepath))
 	file, err := os.Create(filepath) // ファイルを上書きモードで開く
 	if err != nil {
 		return fmt.Errorf("CSV ファイル作成エラー: %v", err)
@@ -93,7 +94,7 @@ func (c *Channels) Add(id, name, description, basedir string) {
 	c.data = append(c.data, ChannelData{
 		ChannelID:   id,
 		Name:        name,
-		FilePath:    filepath.Join(basedir, fmt.Sprintf("%v.jsonl", name)),
+		FilePath:    filepath.Join(basedir, fmt.Sprintf("%s.jsonl", name)),
 		Description: description})
 }
 
@@ -122,11 +123,11 @@ func (c *ChannelData) AppendMessage(jsonstring string) error {
 	f, err := os.OpenFile(c.FilePath,
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return fmt.Errorf("ファイル %s のオープンに失敗： %v", c.FilePath, err)
+		return fmt.Errorf("ファイル %s のオープンに失敗： %w", c.FilePath, err)
 	}
 	defer f.Close()
 	if _, err := f.WriteString(fmt.Sprintf("%v\n", jsonstring)); err != nil {
-		return fmt.Errorf("ファイル %s のオープンに失敗： %v", c.FilePath, err)
+		return fmt.Errorf("ファイル %s のオープンに失敗： %w", c.FilePath, err)
 	}
 	return nil
 }

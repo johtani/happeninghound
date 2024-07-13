@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/slack-go/slack"
-	"github.com/slack-go/slack/socketmode"
 	"log"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/slack-go/slack"
+	"github.com/slack-go/slack/socketmode"
 )
 
 type MessageData struct {
@@ -103,7 +104,5 @@ func Run(ctx context.Context) error {
 
 	// メッセージイベントハンドラ登録
 	socketModeHandler.HandleEvents("message", EventHandler(channels, botID))
-	socketModeHandler.RunEventLoopContext(ctx)
-
-	return nil
+	return socketModeHandler.RunEventLoopContext(ctx)
 }

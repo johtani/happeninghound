@@ -2,12 +2,19 @@ package main
 
 import (
 	"context"
+	"log/slog"
+	"os"
+
 	"github.com/johtani/happeninghound/client"
-	"log"
 )
 
 func main() {
-	if err := client.Run(context.Background()); err != nil {
-		log.Fatal(err)
+	if err := run(os.Args); err != nil {
+		slog.Error(err.Error())
+		os.Exit(1)
 	}
+}
+
+func run(_ []string) error {
+	return client.Run(context.Background())
 }
