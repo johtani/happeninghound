@@ -4,20 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/slack-go/slack"
+	"github.com/slack-go/slack/slackevents"
+	"github.com/slack-go/slack/socketmode"
 	"log"
 	"os"
 	"strings"
-	"time"
-
-	"github.com/slack-go/slack"
-	"github.com/slack-go/slack/socketmode"
 )
-
-type MessageData struct {
-	ReceivedAt  time.Time `json:"received_at"`
-	Message     string    `json:"message"`
-	ChannelName string    `json:"channel_name"`
-}
 
 type Config struct {
 	AppToken string `json:"app_token"`
@@ -44,7 +37,13 @@ func (c Config) validate() error {
 	if !strings.HasPrefix(c.BotToken, "xoxb-") {
 		errs = append(errs, fmt.Sprintf("bot_token must have the prefix \"xoxb-\"."))
 	}
-	// TODO basedir, authoridのチェック？
+	if c.BaseDir == "" {
+		errs = append(errs, fmt.Sprintf("basedir must be set.\n"))
+	}
+	if c.AuthorID == "" {
+		errs = append(errs, fmt.Sprintf("author_id must be set.\n"))
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf(strings.Join(errs, "\n"))
 	}
@@ -99,10 +98,10 @@ func Run(ctx context.Context) error {
 	)
 	socketModeHandler := socketmode.NewSocketmodeHandler(socketClient)
 
-	// スラッシュコマンドハンドラ登録
-	socketModeHandler.HandleSlashCommand("/create-channel", SlashCommandHandler(channels))
-
 	// メッセージイベントハンドラ登録
-	socketModeHandler.HandleEvents("message", EventHandler(channels, botID))
+	socketModeHandler.HandleEvents(slackevents.Message, MessageEventHandler(channels, botID))
+	// チャンネルジョインイベントハンドラ登録
+	socketModeHandler.HandleEvents(slackevents.MemberJoinedChannel, BotJoinedEventHandler(botID))
+
 	return socketModeHandler.RunEventLoopContext(ctx)
 }
