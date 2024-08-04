@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/slack-go/slack"
@@ -35,7 +37,7 @@ func MessageEventHandler(channels *Channels, botID string) socketmode.Socketmode
 			} else if p.User != channels.authorID {
 				client.Debugf("skipped message / not author message")
 				return
-			} else if p.SubType != "" {
+			} else if p.SubType != "" && p.SubType != "file_share" {
 				client.Debugf("skipped message / subtype[%s]", p.SubType)
 				return
 			}
@@ -64,6 +66,18 @@ func MessageEventHandler(channels *Channels, botID string) socketmode.Socketmode
 					"name": channel.Name,
 				},
 			}
+
+			// filesの保存
+			if p.SubType == "file_share" {
+				files, err := downloadImageFiles(client, channel.Name, channels, p.Files, p.EventTimeStamp)
+				if err != nil {
+					client.Debugf("ファイルダウンロードエラー: %v", err)
+				} else {
+					data["files"] = files
+				}
+
+			}
+
 			jsonData, err := json.Marshal(data)
 			if err != nil {
 				client.Debugf("JSON 変換エラー: %v", err)
@@ -80,6 +94,47 @@ func MessageEventHandler(channels *Channels, botID string) socketmode.Socketmode
 			client.Debugf("ファイル保存完了")
 		}
 	}
+}
+
+func downloadImageFiles(client *socketmode.Client, channelName string, channels *Channels, files []slackevents.File, timestamp string) ([]string, error) {
+	filenames := make([]string, 0)
+	errors := make([]string, 0)
+	for i, file := range files {
+		if len(file.URLPrivateDownload) > 0 {
+			filePath := channels.CreateImageFilePath(
+				channelName,
+				timestamp,
+				i,
+				file.Filetype)
+			err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm)
+			if err != nil {
+				errors = append(errors, err.Error())
+			}
+
+			// 画像ファイルを作成
+			localFile, err := os.Create(filePath)
+			if err != nil {
+				errors = append(errors, err.Error())
+			}
+			defer localFile.Close()
+
+			err = client.GetFile(file.URLPrivateDownload, localFile)
+			if err != nil {
+				errors = append(errors, err.Error())
+			}
+			filenames = append(filenames, channels.CreateFilePathForMessage(
+				channelName,
+				timestamp,
+				i,
+				file.Filetype))
+		}
+	}
+	if len(errors) > 0 {
+		err := fmt.Errorf(strings.Join(errors, "\n"))
+		return filenames, err
+	}
+
+	return filenames, nil
 }
 
 func BotJoinedEventHandler(botID string) socketmode.SocketmodeHandlerFunc {

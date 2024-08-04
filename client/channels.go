@@ -30,3 +30,11 @@ func (c *Channels) AppendMessage(channelName, jsonstring string) error {
 	}
 	return nil
 }
+
+func (c *Channels) CreateImageFilePath(channelName string, timestamp string, index int, filetype string) string {
+	return filepath.Join(c.basedir, c.CreateFilePathForMessage(channelName, timestamp, index, filetype))
+}
+
+func (c *Channels) CreateFilePathForMessage(channelName string, timestamp string, index int, filetype string) string {
+	return filepath.Join("images", channelName, fmt.Sprintf("%s_%v.%s", timestamp, index, filetype))
+}
