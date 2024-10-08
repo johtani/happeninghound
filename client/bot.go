@@ -16,11 +16,12 @@ type Config struct {
 	AppToken string `json:"app_token"`
 	BotToken string `json:"bot_token"`
 	Debug    bool   `json:"debug"`
-	BaseDir  string `json:"basedir"`
+	BaseDir  string `json:"baseDir"`
 	AuthorID string `json:"author_id"`
 }
 
 const ConfigFileName = "./config/config.json"
+const CredentialFileName = "./config/credentials.json"
 
 func (c Config) validate() error {
 	var errs []string
@@ -38,7 +39,7 @@ func (c Config) validate() error {
 		errs = append(errs, fmt.Sprintf("bot_token must have the prefix \"xoxb-\"."))
 	}
 	if c.BaseDir == "" {
-		errs = append(errs, fmt.Sprintf("basedir must be set.\n"))
+		errs = append(errs, fmt.Sprintf("baseDir must be set.\n"))
 	}
 	if c.AuthorID == "" {
 		errs = append(errs, fmt.Sprintf("author_id must be set.\n"))
@@ -98,8 +99,11 @@ func Run(ctx context.Context) error {
 	)
 	socketModeHandler := socketmode.NewSocketmodeHandler(socketClient)
 
+	// Google Drive API クライアントの初期化
+	gdrive := NewGDrive(CredentialFileName, config.BaseDir)
+
 	// メッセージイベントハンドラ登録
-	socketModeHandler.HandleEvents(slackevents.Message, MessageEventHandler(channels, botID))
+	socketModeHandler.HandleEvents(slackevents.Message, MessageEventHandler(channels, botID, gdrive))
 	// チャンネルジョインイベントハンドラ登録
 	socketModeHandler.HandleEvents(slackevents.MemberJoinedChannel, BotJoinedEventHandler(botID))
 
