@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/slack-go/slack"
@@ -14,7 +12,7 @@ import (
 )
 
 // MessageEventHandler チャンネルごとのメッセージ受信ハンドラー: MessageEventHandler はメッセージイベントを処理します。
-func MessageEventHandler(channels *Channels, botID string) socketmode.SocketmodeHandlerFunc {
+func MessageEventHandler(channels *Channels, botID string, gdrive *GDrive) socketmode.SocketmodeHandlerFunc {
 	return func(event *socketmode.Event, client *socketmode.Client) {
 
 		client.Debugf("Starting message handling...")
@@ -31,14 +29,7 @@ func MessageEventHandler(channels *Channels, botID string) socketmode.Socketmode
 		}
 		if len(p.Text) > 0 {
 			botMention := fmt.Sprintf("<@%s>", botID)
-			if strings.HasPrefix(p.Text, botMention) {
-				client.Debugf("skipped message / bot mention")
-				return
-			} else if p.User != channels.authorID {
-				client.Debugf("skipped message / not author message")
-				return
-			} else if p.SubType != "" && p.SubType != "file_share" {
-				client.Debugf("skipped message / subtype[%s]", p.SubType)
+			if skipMessage(p, botMention, client, channels) {
 				return
 			}
 			client.Debugf("OK for adding message")
@@ -69,7 +60,7 @@ func MessageEventHandler(channels *Channels, botID string) socketmode.Socketmode
 
 			// filesの保存
 			if p.SubType == "file_share" {
-				files, err := downloadImageFiles(client, channel.Name, channels, p.Files, p.EventTimeStamp)
+				files, err := downloadImageFiles(client, channel.Name, channels, p.Files, p.EventTimeStamp, gdrive)
 				if err != nil {
 					client.Debugf("ファイルダウンロードエラー: %v", err)
 				} else {
@@ -84,49 +75,63 @@ func MessageEventHandler(channels *Channels, botID string) socketmode.Socketmode
 				return
 			}
 
-			if err := channels.AppendMessage(channel.Name, string(jsonData)); err != nil {
+			if err := channels.AppendMessage(channel.Name, string(jsonData), gdrive); err != nil {
 				client.Debugf("ファイル更新エラー: %v", err)
 				if _, _, err := client.PostMessage(channelID, slack.MsgOptionText(fmt.Sprintf("ファイル更新エラー: %v", err), false)); err != nil {
 					fmt.Printf("######### : failed posting message: %v\n", err)
 				}
 				return
 			}
+
 			client.Debugf("ファイル保存完了")
 		}
 	}
 }
 
-func downloadImageFiles(client *socketmode.Client, channelName string, channels *Channels, files []slackevents.File, timestamp string) ([]string, error) {
+func skipMessage(p *slackevents.MessageEvent, botMention string, client *socketmode.Client, channels *Channels) bool {
+	if strings.HasPrefix(p.Text, botMention) {
+		client.Debugf("skipped message / bot mention")
+		return true
+	} else if p.User != channels.authorID {
+		client.Debugf("skipped message / not author message")
+		return true
+	} else if p.SubType != "" && p.SubType != "file_share" {
+		client.Debugf("skipped message / subtype[%s]", p.SubType)
+		return true
+	}
+	return false
+}
+
+func downloadImageFiles(client *socketmode.Client, channelName string, channels *Channels, files []slackevents.File, timestamp string, gdrive *GDrive) ([]string, error) {
 	filenames := make([]string, 0)
 	errors := make([]string, 0)
 	for i, file := range files {
 		if len(file.URLPrivateDownload) > 0 {
-			filePath := channels.CreateImageFilePath(
-				channelName,
-				timestamp,
-				i,
-				file.Filetype)
-			err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm)
+			localFile, err := channels.CreateLocalFile(channelName, timestamp, i, file.Filetype)
 			if err != nil {
 				errors = append(errors, err.Error())
-			}
+			} else {
+				defer localFile.Close()
 
-			// 画像ファイルを作成
-			localFile, err := os.Create(filePath)
-			if err != nil {
-				errors = append(errors, err.Error())
+				err = client.GetFile(file.URLPrivateDownload, localFile)
+				if err != nil {
+					errors = append(errors, err.Error())
+				}
+				filenames = append(filenames, channels.CreateFilePathForMessage(
+					channelName,
+					timestamp,
+					i,
+					file.Filetype))
+				err = gdrive.CreateImageFile(channels.CreateImageFileName(timestamp, i, file.Filetype), channelName,
+					channels.CreateImageFilePath(
+						channelName,
+						timestamp,
+						i,
+						file.Filetype))
+				if err != nil {
+					errors = append(errors, err.Error())
+				}
 			}
-			defer localFile.Close()
-
-			err = client.GetFile(file.URLPrivateDownload, localFile)
-			if err != nil {
-				errors = append(errors, err.Error())
-			}
-			filenames = append(filenames, channels.CreateFilePathForMessage(
-				channelName,
-				timestamp,
-				i,
-				file.Filetype))
 		}
 	}
 	if len(errors) > 0 {
