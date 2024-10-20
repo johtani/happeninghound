@@ -167,3 +167,37 @@ func BotJoinedEventHandler(botID string) socketmode.SocketmodeHandlerFunc {
 		}
 	}
 }
+
+func MakeHtmlSlashCommandHandler(channels *Channels, gdrive *GDrive) socketmode.SocketmodeHandlerFunc {
+	return func(event *socketmode.Event, client *socketmode.Client) {
+
+		ev, ok := event.Data.(slack.SlashCommand)
+		if !ok {
+			client.Debugf("skipped command: %v", event)
+		}
+		client.Ack(*event.Request)
+
+		cmd := fmt.Sprintf("%v %v", ev.Command, ev.Text)
+		if _, _, err := client.PostMessage(ev.ChannelID, slack.MsgOptionText(cmd, false)); err != nil {
+			client.Debugf("failed to post message: %v", err)
+			return
+		}
+
+		msg := "Created html file"
+		if strings.HasPrefix(ev.Command, "/make-html") {
+			err := channels.CreateHtmlFile(ev.ChannelName)
+			if err != nil {
+				fmt.Printf("######### : Got error %v\n", err)
+				msg = fmt.Sprintf("%v\nError: %v", msg, err.Error())
+			}
+		} else {
+			msg = "Unknown command..."
+		}
+
+		if _, _, err := client.PostMessage(ev.ChannelID, slack.MsgOptionText(msg, false)); err != nil {
+			fmt.Printf("######### : failed posting message: %v\n", err)
+			return
+		}
+	}
+
+}

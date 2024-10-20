@@ -7,8 +7,10 @@ import (
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
+	"io"
 	"log"
 	"os"
+	"path"
 	"strings"
 )
 
@@ -20,8 +22,13 @@ type Config struct {
 	AuthorID string `json:"author_id"`
 }
 
-const ConfigFileName = "./config/config.json"
-const CredentialFileName = "./config/credentials.json"
+const ConfigDir = "./config"
+const ConfigFileName = "config.json"
+const CredentialFileName = "credentials.json"
+const HtmlDir = "html"
+const TemplateDir = "template"
+const CSSfile = "output.css"
+const templateFile = "happeninghound-viewer.html"
 
 func (c Config) validate() error {
 	var errs []string
@@ -52,7 +59,7 @@ func (c Config) validate() error {
 }
 
 func loadConfigFromFile() Config {
-	file, err := os.Open(ConfigFileName)
+	file, err := os.Open(path.Join(ConfigDir, ConfigFileName))
 	if err != nil {
 		panic(fmt.Sprintf("ファイルの読み込みエラー: %v", err))
 	}
@@ -71,8 +78,34 @@ func loadConfigFromFile() Config {
 	return config
 }
 
+func initHtml(config Config) error {
+	// HtmlDir作成
+	if err := os.MkdirAll(path.Join(config.BaseDir, HtmlDir), os.ModePerm); err != nil {
+		return fmt.Errorf("HTMLディレクトリの作成に失敗： %v", err)
+	}
+	// CSSFileコピー（なければ）
+	if _, err := os.Stat(path.Join(config.BaseDir, HtmlDir, CSSfile)); err != nil {
+		src, err := os.Open(path.Join(config.BaseDir, TemplateDir, CSSfile))
+		if err != nil {
+			return fmt.Errorf("CSS %s のオープンに失敗： %v", CSSfile, err)
+		}
+		dst, err := os.Create(path.Join(config.BaseDir, HtmlDir, CSSfile))
+		if err != nil {
+			return fmt.Errorf("CSS %s の作成に失敗： %v", CSSfile, err)
+		}
+		_, err = io.Copy(dst, src)
+		if err != nil {
+			return fmt.Errorf("CSS %s へのコピーに失敗： %v", CSSfile, err)
+		}
+	}
+	return nil
+}
+
 func Run(ctx context.Context) error {
 	config := loadConfigFromFile()
+	if err := initHtml(config); err != nil {
+		panic(err)
+	}
 
 	// 既存のチャンネルデータを読み込む
 	channels, err := NewChannels(config.BaseDir, config.AuthorID)
@@ -100,12 +133,13 @@ func Run(ctx context.Context) error {
 	socketModeHandler := socketmode.NewSocketmodeHandler(socketClient)
 
 	// Google Drive API クライアントの初期化
-	gdrive := NewGDrive(CredentialFileName, config.BaseDir)
+	gdrive := NewGDrive(path.Join(ConfigDir, CredentialFileName), config.BaseDir)
 
 	// メッセージイベントハンドラ登録
 	socketModeHandler.HandleEvents(slackevents.Message, MessageEventHandler(channels, botID, gdrive))
 	// チャンネルジョインイベントハンドラ登録
 	socketModeHandler.HandleEvents(slackevents.MemberJoinedChannel, BotJoinedEventHandler(botID))
+	socketModeHandler.Handle(socketmode.EventTypeSlashCommand, MakeHtmlSlashCommandHandler(channels, gdrive))
 
 	return socketModeHandler.RunEventLoopContext(ctx)
 }
