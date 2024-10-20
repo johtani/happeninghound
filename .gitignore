@@ -9,4 +9,5 @@
 /config/config.json
 /config/credentials.json
 /config/images
+/config/html
 *.exe
