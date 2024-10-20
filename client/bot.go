@@ -85,7 +85,7 @@ func initHtml(config Config) error {
 	}
 	// CSSFileコピー（なければ）
 	if _, err := os.Stat(path.Join(config.BaseDir, HtmlDir, CSSFile)); err != nil {
-		src, err := os.Open(path.Join(config.BaseDir, TemplateDir, CSSFile))
+		src, err := os.Open(path.Join(ConfigDir, TemplateDir, CSSFile))
 		if err != nil {
 			return fmt.Errorf("CSS %s のオープンに失敗： %v", CSSFile, err)
 		}
