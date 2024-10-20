@@ -79,7 +79,7 @@ func (c *Channels) CreateImageFileName(timestamp string, index int, filetype str
 	return fmt.Sprintf("%s_%v.%s", timestamp, index, filetype)
 }
 
-func (c *Channels) CreateHtmlFile(channelName string) error {
+func (c *Channels) CreateHtmlFile(channelName string, gdrive *GDrive) error {
 	filePath := c.createChannelFilePath(c.createChannelFileName(channelName))
 
 	//jsonl読み込み
@@ -104,7 +104,8 @@ func (c *Channels) CreateHtmlFile(channelName string) error {
 	if err != nil {
 		return fmt.Errorf("テンプレートファイルのオープンに失敗： %w", err)
 	}
-	htmlFilePath := path.Join(c.basedir, HtmlDir, fmt.Sprintf("%s.html", channelName))
+	htmlFileName := fmt.Sprintf("%s.html", channelName)
+	htmlFilePath := path.Join(c.basedir, HtmlDir, htmlFileName)
 	if err = os.MkdirAll(filepath.Dir(htmlFilePath), os.ModePerm); err != nil {
 		return fmt.Errorf("HTMLディレクトリの作成に失敗： %w", err)
 	}
@@ -114,6 +115,8 @@ func (c *Channels) CreateHtmlFile(channelName string) error {
 	}
 	defer out.Close()
 	t.Execute(out, values)
+	_ = out.Close()
+	gdrive.UploadHtmlFile(htmlFileName, htmlFilePath)
 	return nil
 }
 

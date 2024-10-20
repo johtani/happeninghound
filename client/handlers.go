@@ -185,7 +185,7 @@ func MakeHtmlSlashCommandHandler(channels *Channels, gdrive *GDrive) socketmode.
 
 		msg := "Created html file"
 		if strings.HasPrefix(ev.Command, "/make-html") {
-			err := channels.CreateHtmlFile(ev.ChannelName)
+			err := channels.CreateHtmlFile(ev.ChannelName, gdrive)
 			if err != nil {
 				fmt.Printf("######### : Got error %v\n", err)
 				msg = fmt.Sprintf("%v\nError: %v", msg, err.Error())

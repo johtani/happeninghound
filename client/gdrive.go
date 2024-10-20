@@ -14,20 +14,25 @@ type GDrive struct {
 	baseDir   string
 	targetDir *drive.File
 	imageDir  *drive.File
+	htmlDir   *drive.File
 }
 
+// NewGDrive GoogleDriveクライアント生成
 func NewGDrive(configPath string, basedir string) *GDrive {
 	client, err := drive.NewService(context.Background(), option.WithCredentialsFile(configPath))
 	if err != nil {
 		panic(err)
 	}
+	// TODO 以下のディレクトリはあらかじめ作成しておく
 	targetDir := getTargetDir("happeninghound", client)
 	imageDir := getTargetDirWithParent("images", targetDir.Id, client)
+	htmlDir := getTargetDirWithParent("html", targetDir.Id, client)
 	return &GDrive{
 		client:    client,
 		baseDir:   basedir,
 		targetDir: targetDir,
 		imageDir:  imageDir,
+		htmlDir:   htmlDir,
 	}
 }
 
@@ -65,12 +70,12 @@ func getTargetDirWithParent(dir, parentId string, client *drive.Service) *drive.
 	}
 }
 
-func (gdrive GDrive) getJsonlFile(filename, dirid string) *drive.File {
-	r, err := gdrive.client.Files.List().Q(
+func (g GDrive) getTargetFile(filename, dirid string) *drive.File {
+	r, err := g.client.Files.List().Q(
 		fmt.Sprintf("name = '%s' and '%s' in parents", filename, dirid)).
 		PageSize(1).Fields("nextPageToken, files(id,name)").Do()
 	if err != nil {
-		fmt.Print("Error in GetJsonlFile")
+		fmt.Print("Error in GetTargetFile")
 		fmt.Println(err)
 		return nil
 	}
@@ -82,12 +87,12 @@ func (gdrive GDrive) getJsonlFile(filename, dirid string) *drive.File {
 	}
 }
 
-func (gdrive GDrive) createFile(name string, parent string, filepath string) error {
+func (g GDrive) createFile(name string, parent string, filepath string) error {
 	local, err := os.Open(filepath)
 	if err != nil {
 		return err
 	}
-	driveFile, err := gdrive.client.Files.Create(&drive.File{Name: name, Parents: []string{parent}}).Media(local).Do()
+	driveFile, err := g.client.Files.Create(&drive.File{Name: name, Parents: []string{parent}}).Media(local).Do()
 	if err != nil {
 		return err
 	}
@@ -95,12 +100,12 @@ func (gdrive GDrive) createFile(name string, parent string, filepath string) err
 	return nil
 }
 
-func (gdrive GDrive) updateFile(name, id string, filepath string) error {
+func (g GDrive) updateFile(name, id string, filepath string) error {
 	local, err := os.Open(filepath)
 	if err != nil {
 		return err
 	}
-	driveFile, err := gdrive.client.Files.Update(id, &drive.File{Name: name}).Media(local).Do()
+	driveFile, err := g.client.Files.Update(id, &drive.File{Name: name}).Media(local).Do()
 	if err != nil {
 		return err
 	}
@@ -108,11 +113,12 @@ func (gdrive GDrive) updateFile(name, id string, filepath string) error {
 	return nil
 }
 
-func (gdrive GDrive) createDir(name string, parentId string) (*drive.File, error) {
-	dir := getTargetDirWithParent(name, parentId, gdrive.client)
+// ディレクトリを作成する
+func (g GDrive) createDir(name string, parentId string) (*drive.File, error) {
+	dir := getTargetDirWithParent(name, parentId, g.client)
 	if dir == nil {
 		var err error
-		dir, err = gdrive.client.Files.Create(
+		dir, err = g.client.Files.Create(
 			&drive.File{Name: name, Parents: []string{parentId}, MimeType: "application/vnd.google-apps.folder"}).Do()
 		if err != nil {
 			return nil, err
@@ -123,16 +129,17 @@ func (gdrive GDrive) createDir(name string, parentId string) (*drive.File, error
 	}
 }
 
-func (gdrive GDrive) CreateImageFile(name string, parent string, filepath string) error {
+// CreateImageFile 画像ファイルをimageDirにアップロードする
+func (g GDrive) CreateImageFile(name string, parent string, filepath string) error {
 	local, err := os.Open(filepath)
 	if err != nil {
 		return err
 	}
-	channel, err := gdrive.createDir(parent, gdrive.imageDir.Id)
+	channel, err := g.createDir(parent, g.imageDir.Id)
 	if err != nil {
 		return err
 	}
-	driveFile, err := gdrive.client.Files.Create(&drive.File{Name: name, Parents: []string{channel.Id}}).Media(local).Do()
+	driveFile, err := g.client.Files.Create(&drive.File{Name: name, Parents: []string{channel.Id}}).Media(local).Do()
 	if err != nil {
 		return err
 	}
@@ -140,12 +147,22 @@ func (gdrive GDrive) CreateImageFile(name string, parent string, filepath string
 	return nil
 }
 
-func (gdrive GDrive) UploadFile(name string, filepath string) error {
-
-	f := gdrive.getJsonlFile(name, gdrive.targetDir.Id)
+// UploadFile ファイルをtargetDirにアップロードする
+func (g GDrive) UploadFile(name string, filepath string) error {
+	f := g.getTargetFile(name, g.targetDir.Id)
 	if f == nil {
-		return gdrive.createFile(name, gdrive.targetDir.Id, filepath)
+		return g.createFile(name, g.targetDir.Id, filepath)
 	} else {
-		return gdrive.updateFile(name, f.Id, filepath)
+		return g.updateFile(name, f.Id, filepath)
+	}
+}
+
+// UploadHtmlFile HTMLファイルをhtmlDirにアップロードする
+func (g GDrive) UploadHtmlFile(name string, filepath string) error {
+	f := g.getTargetFile(name, g.htmlDir.Id)
+	if f == nil {
+		return g.createFile(name, g.htmlDir.Id, filepath)
+	} else {
+		return g.updateFile(name, f.Id, filepath)
 	}
 }
