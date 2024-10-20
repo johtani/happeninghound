@@ -100,7 +100,7 @@ func (c *Channels) CreateHtmlFile(channelName string) error {
 		"contents": contents,
 		"title":    channelName,
 	}
-	t, err := template.New(templateFile).ParseFiles(path.Join(ConfigDir, TemplateDir, templateFile))
+	t, err := template.New(TemplateFile).ParseFiles(path.Join(ConfigDir, TemplateDir, TemplateFile))
 	if err != nil {
 		return fmt.Errorf("テンプレートファイルのオープンに失敗： %w", err)
 	}

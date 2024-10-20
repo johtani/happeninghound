@@ -28,7 +28,7 @@ const CredentialFileName = "credentials.json"
 const HtmlDir = "html"
 const TemplateDir = "template"
 const CSSfile = "output.css"
-const templateFile = "happeninghound-viewer.html"
+const TemplateFile = "happeninghound-viewer.html"
 
 func (c Config) validate() error {
 	var errs []string
