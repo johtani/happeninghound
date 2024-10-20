@@ -27,7 +27,7 @@ const ConfigFileName = "config.json"
 const CredentialFileName = "credentials.json"
 const HtmlDir = "html"
 const TemplateDir = "template"
-const CSSfile = "output.css"
+const CSSFile = "output.css"
 const TemplateFile = "happeninghound-viewer.html"
 
 func (c Config) validate() error {
@@ -84,18 +84,18 @@ func initHtml(config Config) error {
 		return fmt.Errorf("HTMLディレクトリの作成に失敗： %v", err)
 	}
 	// CSSFileコピー（なければ）
-	if _, err := os.Stat(path.Join(config.BaseDir, HtmlDir, CSSfile)); err != nil {
-		src, err := os.Open(path.Join(config.BaseDir, TemplateDir, CSSfile))
+	if _, err := os.Stat(path.Join(config.BaseDir, HtmlDir, CSSFile)); err != nil {
+		src, err := os.Open(path.Join(config.BaseDir, TemplateDir, CSSFile))
 		if err != nil {
-			return fmt.Errorf("CSS %s のオープンに失敗： %v", CSSfile, err)
+			return fmt.Errorf("CSS %s のオープンに失敗： %v", CSSFile, err)
 		}
-		dst, err := os.Create(path.Join(config.BaseDir, HtmlDir, CSSfile))
+		dst, err := os.Create(path.Join(config.BaseDir, HtmlDir, CSSFile))
 		if err != nil {
-			return fmt.Errorf("CSS %s の作成に失敗： %v", CSSfile, err)
+			return fmt.Errorf("CSS %s の作成に失敗： %v", CSSFile, err)
 		}
 		_, err = io.Copy(dst, src)
 		if err != nil {
-			return fmt.Errorf("CSS %s へのコピーに失敗： %v", CSSfile, err)
+			return fmt.Errorf("CSS %s へのコピーに失敗： %v", CSSFile, err)
 		}
 	}
 	return nil

@@ -114,9 +114,13 @@ func (c *Channels) CreateHtmlFile(channelName string, gdrive *GDrive) error {
 		return fmt.Errorf("HTMLファイルのオープンに失敗： %w", err)
 	}
 	defer out.Close()
-	t.Execute(out, values)
+	if err := t.Execute(out, values); err != nil {
+		return fmt.Errorf("テンプレートのExecuteに失敗： %w", err)
+	}
 	_ = out.Close()
-	gdrive.UploadHtmlFile(htmlFileName, htmlFilePath)
+	if err := gdrive.UploadHtmlFile(htmlFileName, htmlFilePath); err != nil {
+		return fmt.Errorf(" Google DriveへのHTMLファイルアップロードに失敗： %w", err)
+	}
 	return nil
 }
 
@@ -140,6 +144,6 @@ func (e Entry) Timestamp2String() string {
 // ParseEntry 1行jsonをEntryに変換
 func ParseEntry(jsonl string) Entry {
 	var entry Entry
-	json.Unmarshal([]byte(jsonl), &entry)
+	_ = json.Unmarshal([]byte(jsonl), &entry)
 	return entry
 }
