@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/slack-go/slack"
@@ -168,7 +169,7 @@ func BotJoinedEventHandler(botID string) socketmode.SocketmodeHandlerFunc {
 	}
 }
 
-func MakeHtmlSlashCommandHandler(channels *Channels, gdrive *GDrive) socketmode.SocketmodeHandlerFunc {
+func SlashCommandHandler(channels *Channels, gdrive *GDrive, basedir string) socketmode.SocketmodeHandlerFunc {
 	return func(event *socketmode.Event, client *socketmode.Client) {
 
 		ev, ok := event.Data.(slack.SlashCommand)
@@ -183,21 +184,40 @@ func MakeHtmlSlashCommandHandler(channels *Channels, gdrive *GDrive) socketmode.
 			return
 		}
 
-		msg := "Created html file"
-		if strings.HasPrefix(ev.Command, "/make-html") {
-			err := channels.CreateHtmlFile(ev.ChannelName, gdrive)
-			if err != nil {
-				fmt.Printf("######### : Got error %v\n", err)
-				msg = fmt.Sprintf("%v\nError: %v", msg, err.Error())
-			}
-		} else {
-			msg = "Unknown command..."
-		}
+		msg := executeCommand(ev, channels, gdrive, basedir)
 
 		if _, _, err := client.PostMessage(ev.ChannelID, slack.MsgOptionText(msg, false)); err != nil {
 			fmt.Printf("######### : failed posting message: %v\n", err)
 			return
 		}
 	}
+}
 
+func executeCommand(ev slack.SlashCommand, channels *Channels, gdrive *GDrive, basedir string) string {
+	var msg string
+	if strings.HasPrefix(ev.Command, "/make-html") {
+		msg = "Created html file"
+		err := channels.CreateHtmlFile(ev.ChannelName, gdrive)
+		if err != nil {
+			fmt.Printf("######### : Got error %v\n", err)
+			msg = fmt.Sprintf("%v\nError: %v", msg, err.Error())
+		}
+	} else if strings.HasPrefix(ev.Command, "/show-files") {
+		msg = "Files are ..."
+		dirReader, err := os.ReadDir(basedir)
+		if err != nil {
+			fmt.Printf("######### : Got error %v\n", err)
+			msg = fmt.Sprintf("%v\nError: %v", msg, err.Error())
+		}
+		var files []string
+		for _, entry := range dirReader {
+			if strings.HasSuffix(entry.Name(), ".jsonl") {
+				files = append(files, entry.Name())
+			}
+		}
+		msg = fmt.Sprintf("%s\n%s\n", msg, strings.Join(files, "\n"))
+	} else {
+		msg = "Unknown command..."
+	}
+	return msg
 }
