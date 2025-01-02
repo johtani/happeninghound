@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/slack-go/slack"
@@ -214,9 +215,14 @@ func executeCommand(ev slack.SlashCommand, channels *Channels, gdrive *GDrive, b
 			msg = fmt.Sprintf("%v\nError: %v", msg, err.Error())
 		}
 		var files []string
+		htmls := htmlFileNames(basedir)
 		for _, entry := range dirReader {
-			if strings.HasSuffix(entry.Name(), ".jsonl") {
-				files = append(files, entry.Name())
+			if file, ok := strings.CutSuffix(entry.Name(), ".jsonl"); ok {
+				if _, ok := htmls[file]; ok {
+					files = append(files, fmt.Sprintf(":o: %s", entry.Name()))
+				} else {
+					files = append(files, fmt.Sprintf(":x: %s", entry.Name()))
+				}
 			}
 		}
 		msg = fmt.Sprintf("%s\n%s\n", msg, strings.Join(files, "\n"))
@@ -224,4 +230,17 @@ func executeCommand(ev slack.SlashCommand, channels *Channels, gdrive *GDrive, b
 		msg = "Unknown command..."
 	}
 	return msg
+}
+
+func htmlFileNames(basedir string) map[string]bool {
+	files := make(map[string]bool)
+	dirReader, err := os.ReadDir(path.Join(basedir, HtmlDir))
+	if err == nil {
+		for _, entry := range dirReader {
+			if file, ok := strings.CutSuffix(entry.Name(), ".html"); ok {
+				files[file] = true
+			}
+		}
+	}
+	return files
 }
