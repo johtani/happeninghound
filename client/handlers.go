@@ -197,7 +197,11 @@ func executeCommand(ev slack.SlashCommand, channels *Channels, gdrive *GDrive, b
 	var msg string
 	if strings.HasPrefix(ev.Command, "/make-html") {
 		msg = "Created html file"
-		err := channels.CreateHtmlFile(ev.ChannelName, gdrive)
+		channelName := ev.ChannelName
+		if len(ev.Text) > 0 {
+			channelName = strings.ReplaceAll(ev.Text, ".jsonl", "")
+		}
+		err := channels.CreateHtmlFile(channelName, gdrive)
 		if err != nil {
 			fmt.Printf("######### : Got error %v\n", err)
 			msg = fmt.Sprintf("%v\nError: %v", msg, err.Error())
