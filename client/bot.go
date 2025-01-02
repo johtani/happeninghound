@@ -139,7 +139,7 @@ func Run(ctx context.Context) error {
 	socketModeHandler.HandleEvents(slackevents.Message, MessageEventHandler(channels, botID, gdrive))
 	// チャンネルジョインイベントハンドラ登録
 	socketModeHandler.HandleEvents(slackevents.MemberJoinedChannel, BotJoinedEventHandler(botID))
-	socketModeHandler.Handle(socketmode.EventTypeSlashCommand, MakeHtmlSlashCommandHandler(channels, gdrive))
+	socketModeHandler.Handle(socketmode.EventTypeSlashCommand, SlashCommandHandler(channels, gdrive, config.BaseDir))
 
 	return socketModeHandler.RunEventLoopContext(ctx)
 }
