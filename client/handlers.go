@@ -244,3 +244,41 @@ func htmlFileNames(basedir string) map[string]bool {
 	}
 	return files
 }
+
+func ChannelArchiveHandler(channels *Channels, gdrive *GDrive) socketmode.SocketmodeHandlerFunc {
+	return func(event *socketmode.Event, client *socketmode.Client) {
+		client.Debugf("Channel archive event handling...")
+		eventPayload, ok := event.Data.(slackevents.EventsAPIEvent)
+		if !ok {
+			client.Debugf("skipped Envelope: %v", event)
+			return
+		}
+		client.Ack(*event.Request)
+		p, ok := eventPayload.InnerEvent.Data.(*slackevents.ChannelArchiveEvent)
+		if !ok {
+			client.Debugf("skipped Payload Event: %v", event)
+			return
+		}
+		channelID := p.Channel
+		channel, err := client.GetConversationInfoContext(
+			context.Background(),
+			&slack.GetConversationInfoInput{ChannelID: channelID},
+		)
+		if err != nil {
+			client.Debugf("チャンネル情報取得エラー: %v", err)
+			if _, _, err := client.PostMessage(channelID, slack.MsgOptionText(fmt.Sprintf("チャンネル情報取得エラー: %v", err), false)); err != nil {
+				fmt.Printf("######### : failed posting message: %v\n", err)
+			}
+			return
+		}
+
+		channelName := channel.Name
+		msg := "Created html file"
+		err = channels.CreateHtmlFile(channelName, gdrive)
+		if err != nil {
+			fmt.Printf("######### : Got error %v\n", err)
+			msg = fmt.Sprintf("%v\nError: %v", msg, err.Error())
+		}
+		fmt.Printf("%s - %s\n", msg, channelName)
+	}
+}
