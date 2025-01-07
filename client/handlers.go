@@ -29,64 +29,62 @@ func MessageEventHandler(channels *Channels, botID string, gdrive *GDrive) socke
 			client.Debugf("skipped Payload Event: %v", event)
 			return
 		}
-		if len(p.Text) > 0 {
-			botMention := fmt.Sprintf("<@%s>", botID)
-			if skipMessage(p, botMention, client, channels) {
-				return
-			}
-			client.Debugf("OK for adding message")
-
-			// チャンネル名取得
-			channelID := p.Channel
-			channel, err := client.GetConversationInfoContext(
-				context.Background(),
-				&slack.GetConversationInfoInput{ChannelID: channelID},
-			)
-			if err != nil {
-				client.Debugf("チャンネル情報取得エラー: %v", err)
-				if _, _, err := client.PostMessage(channelID, slack.MsgOptionText(fmt.Sprintf("チャンネル情報取得エラー: %v", err), false)); err != nil {
-					fmt.Printf("######### : failed posting message: %v\n", err)
-				}
-				return
-			}
-
-			// JSON データ作成
-			data := map[string]interface{}{
-				"timestamp": p.EventTimeStamp,
-				"message":   p.Text,
-				"channel": map[string]string{
-					"id":   channelID,
-					"name": channel.Name,
-				},
-			}
-
-			// filesの保存
-			if p.SubType == "file_share" {
-				files, err := downloadImageFiles(client, channel.Name, channels, p.Files, p.EventTimeStamp, gdrive)
-				if err != nil {
-					client.Debugf("ファイルダウンロードエラー: %v", err)
-				} else {
-					data["files"] = files
-				}
-
-			}
-
-			jsonData, err := json.Marshal(data)
-			if err != nil {
-				client.Debugf("JSON 変換エラー: %v", err)
-				return
-			}
-
-			if err := channels.AppendMessage(channel.Name, string(jsonData), gdrive); err != nil {
-				client.Debugf("ファイル更新エラー: %v", err)
-				if _, _, err := client.PostMessage(channelID, slack.MsgOptionText(fmt.Sprintf("ファイル更新エラー: %v", err), false)); err != nil {
-					fmt.Printf("######### : failed posting message: %v\n", err)
-				}
-				return
-			}
-
-			client.Debugf("ファイル保存完了")
+		botMention := fmt.Sprintf("<@%s>", botID)
+		if skipMessage(p, botMention, client, channels) {
+			return
 		}
+		client.Debugf("OK for adding message")
+
+		// チャンネル名取得
+		channelID := p.Channel
+		channel, err := client.GetConversationInfoContext(
+			context.Background(),
+			&slack.GetConversationInfoInput{ChannelID: channelID},
+		)
+		if err != nil {
+			client.Debugf("チャンネル情報取得エラー: %v", err)
+			if _, _, err := client.PostMessage(channelID, slack.MsgOptionText(fmt.Sprintf("チャンネル情報取得エラー: %v", err), false)); err != nil {
+				fmt.Printf("######### : failed posting message: %v\n", err)
+			}
+			return
+		}
+
+		// JSON データ作成
+		data := map[string]interface{}{
+			"timestamp": p.EventTimeStamp,
+			"message":   p.Text,
+			"channel": map[string]string{
+				"id":   channelID,
+				"name": channel.Name,
+			},
+		}
+
+		// filesの保存
+		if p.SubType == "file_share" {
+			files, err := downloadImageFiles(client, channel.Name, channels, p.Files, p.EventTimeStamp, gdrive)
+			if err != nil {
+				client.Debugf("ファイルダウンロードエラー: %v", err)
+			} else {
+				data["files"] = files
+			}
+
+		}
+
+		jsonData, err := json.Marshal(data)
+		if err != nil {
+			client.Debugf("JSON 変換エラー: %v", err)
+			return
+		}
+
+		if err := channels.AppendMessage(channel.Name, string(jsonData), gdrive); err != nil {
+			client.Debugf("ファイル更新エラー: %v", err)
+			if _, _, err := client.PostMessage(channelID, slack.MsgOptionText(fmt.Sprintf("ファイル更新エラー: %v", err), false)); err != nil {
+				fmt.Printf("######### : failed posting message: %v\n", err)
+			}
+			return
+		}
+
+		client.Debugf("ファイル保存完了")
 	}
 }
 
@@ -99,6 +97,9 @@ func skipMessage(p *slackevents.MessageEvent, botMention string, client *socketm
 		return true
 	} else if p.SubType != "" && p.SubType != "file_share" {
 		client.Debugf("skipped message / subtype[%s]", p.SubType)
+		return true
+	} else if p.SubType != "file_share" && len(strings.TrimSpace(p.Text)) == 0 {
+		client.Debugf("skipped message / empty message without file_share type")
 		return true
 	}
 	return false
