@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -133,11 +134,34 @@ type Entry struct {
 	Files       []string `json:"files"`
 }
 
+func (e Entry) MessageWithLinkTag() template.HTML {
+	if strings.Contains(e.Message, "\u003chttp") {
+		pattern := `&lt;https?://[^\s]+&gt;`
+		// 正規表現をコンパイル
+		re := regexp.MustCompile(pattern)
+
+		// 文字列を置換
+		result := re.ReplaceAllStringFunc(template.HTMLEscapeString(e.Message), func(url string) string {
+			tmp := url[len("&lt;") : len(url)-len("&gt;")]
+			return fmt.Sprintf("<a href=\"%s\" target=\"_blank\">%s</a>", tmp, tmp)
+		})
+		return template.HTML(result)
+	} else {
+		return template.HTML(template.HTMLEscapeString(e.Message))
+	}
+}
+
 // Timestamp2String Slackから取得した日付データを文字列に成形
 func (e Entry) Timestamp2String() string {
 	splits := strings.Split(e.Timestamp, ".")
-	sec, _ := strconv.ParseInt(splits[0], 10, 64)
-	nano, _ := strconv.ParseInt(splits[1], 10, 64)
+	sec, err := strconv.ParseInt(splits[0], 10, 64)
+	if err != nil {
+		return ""
+	}
+	nano, err := strconv.ParseInt(splits[1], 10, 64)
+	if err != nil {
+		return ""
+	}
 	return time.Unix(sec, nano).Format("2006-01-02 15:04:05")
 }
 
