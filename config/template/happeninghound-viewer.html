@@ -15,7 +15,7 @@
 <div class="mx-auto max-w-md overflow-hidden rounded-lg bg-white shadow">
     <div class="p-4">
         <p class="mb-1 text-sm text-primary-500"><time>{{ $v.Timestamp2String }}</time></p>
-        <p class="mt-1 text-gray-500">{{ $v.Message }}</p>
+        <p class="mt-1 text-gray-500">{{ $v.MessageWithLinkTag }}</p>
     </div>
     {{ range $v.Files }}
     <img src="../{{ . }}" class="aspect-video w-full object-cover" alt="" />
