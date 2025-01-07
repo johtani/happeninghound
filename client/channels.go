@@ -134,11 +134,12 @@ type Entry struct {
 	Files       []string `json:"files"`
 }
 
+// 正規表現をコンパイル
+var re = regexp.MustCompile(`&lt;https?://[^\s]+&gt;`)
+
+// MessageWithLinkTag メッセージに含まれるリンクをHTMLタグに変換
 func (e Entry) MessageWithLinkTag() template.HTML {
 	if strings.Contains(e.Message, "\u003chttp") {
-		pattern := `&lt;https?://[^\s]+&gt;`
-		// 正規表現をコンパイル
-		re := regexp.MustCompile(pattern)
 
 		// 文字列を置換
 		result := re.ReplaceAllStringFunc(template.HTMLEscapeString(e.Message), func(url string) string {
