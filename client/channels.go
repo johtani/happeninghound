@@ -101,7 +101,7 @@ func (c *Channels) CreateHtmlFile(channelName string, gdrive *GDrive) error {
 		"contents": contents,
 		"title":    channelName,
 	}
-	t, err := template.New(TemplateFile).ParseFiles(path.Join(ConfigDir, TemplateDir, TemplateFile))
+	t, err := template.ParseFS(templateFiles, path.Join(TemplateDir, TemplateFile))
 	if err != nil {
 		return fmt.Errorf("テンプレートファイルのオープンに失敗： %w", err)
 	}

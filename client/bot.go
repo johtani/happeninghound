@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"github.com/slack-go/slack"
@@ -26,6 +27,10 @@ const ConfigDir = "./config"
 const ConfigFileName = "config.json"
 const CredentialFileName = "credentials.json"
 const HtmlDir = "html"
+
+//go:embed template/*
+var templateFiles embed.FS
+
 const TemplateDir = "template"
 const CSSFile = "output.css"
 const TemplateFile = "happeninghound-viewer.html"
@@ -85,7 +90,7 @@ func initHtml(config Config) error {
 	}
 	// CSSFileコピー（なければ）
 	if _, err := os.Stat(path.Join(config.BaseDir, HtmlDir, CSSFile)); err != nil {
-		src, err := os.Open(path.Join(ConfigDir, TemplateDir, CSSFile))
+		src, err := templateFiles.Open(path.Join(TemplateDir, CSSFile))
 		if err != nil {
 			return fmt.Errorf("CSS %s のオープンに失敗： %v", CSSFile, err)
 		}
