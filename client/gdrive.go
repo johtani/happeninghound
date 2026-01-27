@@ -132,6 +132,9 @@ func (g GDrive) createDir(ctx context.Context, name string, parentId string) (*d
 
 // CreateImageFile 画像ファイルをimageDirにアップロードする
 func (g GDrive) CreateImageFile(ctx context.Context, name string, parent string, filepath string) error {
+	ctx, span := tracer.Start(ctx, "GDrive.CreateImageFile")
+	defer span.End()
+
 	local, err := os.Open(filepath)
 	if err != nil {
 		return err
@@ -150,6 +153,9 @@ func (g GDrive) CreateImageFile(ctx context.Context, name string, parent string,
 
 // UploadFile ファイルをtargetDirにアップロードする
 func (g GDrive) UploadFile(ctx context.Context, name string, filepath string) error {
+	ctx, span := tracer.Start(ctx, "GDrive.UploadFile")
+	defer span.End()
+
 	f := g.getTargetFile(ctx, name, g.targetDir.Id)
 	if f == nil {
 		return g.createFile(ctx, name, g.targetDir.Id, filepath)
@@ -160,6 +166,9 @@ func (g GDrive) UploadFile(ctx context.Context, name string, filepath string) er
 
 // UploadHtmlFile HTMLファイルをhtmlDirにアップロードする
 func (g GDrive) UploadHtmlFile(ctx context.Context, name string, filepath string) error {
+	ctx, span := tracer.Start(ctx, "GDrive.UploadHtmlFile")
+	defer span.End()
+
 	f := g.getTargetFile(ctx, name, g.htmlDir.Id)
 	if f == nil {
 		return g.createFile(ctx, name, g.targetDir.Id, filepath)

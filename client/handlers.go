@@ -21,6 +21,8 @@ func MessageEventHandler(channels *Channels, botID string, gdrive *GDrive) socke
 		if tracer == nil {
 			tracer = otel.GetTracerProvider().Tracer("client")
 		}
+		// Socket Modeイベント自体に親トレース情報は含まれていないため、
+		// ここではBackgroundから開始したSpanを使い、各処理にContextを伝播させる。
 		ctx, span := tracer.Start(context.Background(), "MessageEventHandler")
 		defer span.End()
 
@@ -115,6 +117,9 @@ func skipMessage(p *slackevents.MessageEvent, botMention string, client *socketm
 }
 
 func downloadImageFiles(ctx context.Context, client *socketmode.Client, channelName string, channels *Channels, files []slack.File, timestamp string, gdrive *GDrive) ([]string, error) {
+	ctx, span := tracer.Start(ctx, "downloadImageFiles")
+	defer span.End()
+
 	filenames := make([]string, 0)
 	errors := make([]string, 0)
 	for i, file := range files {
@@ -156,6 +161,12 @@ func downloadImageFiles(ctx context.Context, client *socketmode.Client, channelN
 
 func BotJoinedEventHandler(botID string) socketmode.SocketmodeHandlerFunc {
 	return func(event *socketmode.Event, client *socketmode.Client) {
+		if tracer == nil {
+			tracer = otel.GetTracerProvider().Tracer("client")
+		}
+		_, span := tracer.Start(context.Background(), "BotJoinedEventHandler")
+		defer span.End()
+
 		client.Debugf("Starting joined event handling...")
 		eventPayload, ok := event.Data.(slackevents.EventsAPIEvent)
 		if !ok {
@@ -185,6 +196,7 @@ func SlashCommandHandler(channels *Channels, gdrive *GDrive, basedir string) soc
 		if tracer == nil {
 			tracer = otel.GetTracerProvider().Tracer("client")
 		}
+		// SlashCommandの場合はBackgroundからSpanを開始
 		ctx, span := tracer.Start(context.Background(), "SlashCommandHandler")
 		defer span.End()
 
@@ -211,6 +223,9 @@ func SlashCommandHandler(channels *Channels, gdrive *GDrive, basedir string) soc
 }
 
 func executeCommand(ctx context.Context, ev slack.SlashCommand, channels *Channels, gdrive *GDrive, basedir string) string {
+	ctx, span := tracer.Start(ctx, "executeCommand")
+	defer span.End()
+
 	var msg string
 	if strings.HasPrefix(ev.Command, "/make-html") {
 		msg = "Created html file"
@@ -266,6 +281,7 @@ func ChannelArchiveHandler(channels *Channels, gdrive *GDrive) socketmode.Socket
 		if tracer == nil {
 			tracer = otel.GetTracerProvider().Tracer("client")
 		}
+		// ArchiveEventの場合はBackgroundからSpanを開始
 		ctx, span := tracer.Start(context.Background(), "ChannelArchiveHandler")
 		defer span.End()
 

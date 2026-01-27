@@ -27,6 +27,9 @@ func NewChannels(basedir, authorID string) (*Channels, error) {
 }
 
 func (c *Channels) AppendMessage(ctx context.Context, channelName, jsonstring string, gdrive *GDrive) error {
+	ctx, span := tracer.Start(ctx, "AppendMessage")
+	defer span.End()
+
 	channelFileName := c.createChannelFileName(channelName)
 	filePath := c.createChannelFilePath(channelFileName)
 	f, err := os.OpenFile(filePath,
@@ -82,6 +85,9 @@ func (c *Channels) CreateImageFileName(timestamp string, index int, filetype str
 }
 
 func (c *Channels) CreateHtmlFile(ctx context.Context, channelName string, gdrive *GDrive) error {
+	ctx, span := tracer.Start(ctx, "CreateHtmlFile")
+	defer span.End()
+
 	filePath := c.createChannelFilePath(c.createChannelFileName(channelName))
 
 	//jsonl読み込み
