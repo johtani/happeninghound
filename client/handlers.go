@@ -61,7 +61,7 @@ func MessageEventHandler(channels *Channels, botID string, gdrive *GDrive) socke
 
 		// filesの保存
 		if p.SubType == "file_share" {
-			files, err := downloadImageFiles(client, channel.Name, channels, p.Files, p.EventTimeStamp, gdrive)
+			files, err := downloadImageFiles(client, channel.Name, channels, p.Message.Files, p.EventTimeStamp, gdrive)
 			if err != nil {
 				client.Debugf("ファイルダウンロードエラー: %v", err)
 			} else {
@@ -105,7 +105,7 @@ func skipMessage(p *slackevents.MessageEvent, botMention string, client *socketm
 	return false
 }
 
-func downloadImageFiles(client *socketmode.Client, channelName string, channels *Channels, files []slackevents.File, timestamp string, gdrive *GDrive) ([]string, error) {
+func downloadImageFiles(client *socketmode.Client, channelName string, channels *Channels, files []slack.File, timestamp string, gdrive *GDrive) ([]string, error) {
 	filenames := make([]string, 0)
 	errors := make([]string, 0)
 	for i, file := range files {
@@ -138,7 +138,7 @@ func downloadImageFiles(client *socketmode.Client, channelName string, channels 
 		}
 	}
 	if len(errors) > 0 {
-		err := fmt.Errorf(strings.Join(errors, "\n"))
+		err := fmt.Errorf("%s", strings.Join(errors, "\n"))
 		return filenames, err
 	}
 
