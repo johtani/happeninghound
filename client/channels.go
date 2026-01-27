@@ -164,7 +164,7 @@ func (e Entry) Timestamp2String() string {
 	if err != nil {
 		return ""
 	}
-	return time.Unix(sec, nano).Format("2006-01-02 15:04:05")
+	return time.Unix(sec, nano).UTC().Format("2006-01-02 15:04:05")
 }
 
 // ParseEntry 1行jsonをEntryに変換

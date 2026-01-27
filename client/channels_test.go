@@ -45,7 +45,7 @@ func TestEntry_Timestamp2String(t *testing.T) {
 		timestamp string
 		want      string
 	}{
-		{name: "valid timestamp", timestamp: "1633024800.123456789", want: "2021-10-01 03:00:00"},
+		{name: "valid timestamp", timestamp: "1633024800.123456789", want: "2021-09-30 18:00:00"},
 		{name: "invalid timestamp", timestamp: "invalid.timestamp", want: ""},
 	}
 	for _, tt := range tests {
