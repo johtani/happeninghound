@@ -45,6 +45,31 @@ HappeningHoundを使えば、Slackでのやり取りを自動的に記録でき�
 Google Drive APIのためのクレデンシャルファイルをconfig/credentials.jsonという名前で配置します。
 Google Driveにデータ保存する機能のためには、「happeninghound/images」というフォルダを事前に作成しておく必要があります。
 
+## 可観測性 (OpenTelemetry)
+
+HappeningHoundは OpenTelemetry を利用したトレーシングに対応しています。
+デフォルトでは標準出力（stdout）にトレース情報を出力しますが、環境変数により OTLP バックエンドへの送信も可能です。
+
+### 設定方法
+
+以下の環境変数を使用して、トレースの出力先を制御できます。
+
+- `OTEL_EXPORTER`: `otlp` を指定すると OTLP エクスポーターを使用します。指定しない場合は `stdout` になります。
+- `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP コレクターのエンドポイント（例: `localhost:4317`）。
+- `OTEL_EXPORTER_OTLP_PROTOCOL`: 通信プロトコル。`grpc` または `http/protobuf` を指定可能（デフォルトは `grpc`）。
+- `OTEL_SERVICE_NAME`: サービス名（デフォルトは `happeninghound`）。
+
+### バックエンドへの送信例 (gRPC)
+
+```bash
+export OTEL_EXPORTER=otlp
+export OTEL_EXPORTER_OTLP_ENDPOINT=localhost:4317
+export OTEL_EXPORTER_OTLP_INSECURE=true
+./happeninghound
+```
+
+メッセージの受信、Google Driveへの保存、HTML生成などの主要な処理の所要時間や、処理の成否を確認することができます。
+
 ## ライセンス
 
 * MITライセンスの元でリリースされています。詳細は[LICENSE](./LICENSE)ファイルを参照してください。

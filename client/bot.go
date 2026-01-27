@@ -107,6 +107,12 @@ func initHtml(config Config) error {
 }
 
 func Run(ctx context.Context) error {
+	tp, err := InitTracer(ctx, os.Stdout)
+	if err != nil {
+		return err
+	}
+	defer ShutdownTracer(tp)
+
 	config := loadConfigFromFile()
 	if err := initHtml(config); err != nil {
 		panic(err)

@@ -2,6 +2,7 @@ package client
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -25,7 +26,7 @@ func NewChannels(basedir, authorID string) (*Channels, error) {
 	return &Channels{basedir: basedir, authorID: authorID}, nil
 }
 
-func (c *Channels) AppendMessage(channelName, jsonstring string, gdrive *GDrive) error {
+func (c *Channels) AppendMessage(ctx context.Context, channelName, jsonstring string, gdrive *GDrive) error {
 	channelFileName := c.createChannelFileName(channelName)
 	filePath := c.createChannelFilePath(channelFileName)
 	f, err := os.OpenFile(filePath,
@@ -37,7 +38,7 @@ func (c *Channels) AppendMessage(channelName, jsonstring string, gdrive *GDrive)
 	if _, err := f.WriteString(fmt.Sprintf("%v\n", jsonstring)); err != nil {
 		return fmt.Errorf("ファイル %s のオープンに失敗： %w", filePath, err)
 	}
-	err = gdrive.UploadFile(channelFileName, filePath)
+	err = gdrive.UploadFile(ctx, channelFileName, filePath)
 	return nil
 }
 
@@ -80,7 +81,7 @@ func (c *Channels) CreateImageFileName(timestamp string, index int, filetype str
 	return fmt.Sprintf("%s_%v.%s", timestamp, index, filetype)
 }
 
-func (c *Channels) CreateHtmlFile(channelName string, gdrive *GDrive) error {
+func (c *Channels) CreateHtmlFile(ctx context.Context, channelName string, gdrive *GDrive) error {
 	filePath := c.createChannelFilePath(c.createChannelFileName(channelName))
 
 	//jsonl読み込み
@@ -119,7 +120,7 @@ func (c *Channels) CreateHtmlFile(channelName string, gdrive *GDrive) error {
 		return fmt.Errorf("テンプレートのExecuteに失敗： %w", err)
 	}
 	_ = out.Close()
-	if err := gdrive.UploadHtmlFile(htmlFileName, htmlFilePath); err != nil {
+	if err := gdrive.UploadHtmlFile(ctx, htmlFileName, htmlFilePath); err != nil {
 		return fmt.Errorf(" Google DriveへのHTMLファイルアップロードに失敗： %w", err)
 	}
 	return nil
@@ -163,7 +164,7 @@ func (e Entry) Timestamp2String() string {
 	if err != nil {
 		return ""
 	}
-	return time.Unix(sec, nano).Format("2006-01-02 15:04:05")
+	return time.Unix(sec, nano).UTC().Format("2006-01-02 15:04:05")
 }
 
 // ParseEntry 1行jsonをEntryに変換
