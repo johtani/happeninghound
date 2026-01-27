@@ -28,6 +28,16 @@ func InitTracer(ctx context.Context, w io.Writer) (*sdktrace.TracerProvider, err
 	otelExporter := os.Getenv("OTEL_EXPORTER")
 	switch otelExporter {
 	case "otlp":
+		// OTEL_EXPORTER_OTLP_ENDPOINT が設定されていない場合、gRPC/HTTP エクスポートは失敗する可能性が高い
+		if os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == "" &&
+			os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") == "" {
+			fmt.Println("OTEL_EXPORTER is set to 'otlp', but OTEL_EXPORTER_OTLP_ENDPOINT is not set. Falling back to stdout.")
+			exporter, err = stdouttrace.New(
+				stdouttrace.WithWriter(w),
+				stdouttrace.WithPrettyPrint(),
+			)
+			break
+		}
 		proto := os.Getenv("OTEL_EXPORTER_OTLP_PROTOCOL")
 		if proto == "http/protobuf" {
 			exporter, err = otlptracehttp.New(ctx)
