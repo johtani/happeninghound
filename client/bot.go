@@ -8,16 +8,12 @@ import (
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"
 	"io"
 	"log"
 	"os"
 	"path"
 	"strings"
 )
-
-var tracer trace.Tracer
 
 type Config struct {
 	AppToken string `json:"app_token"`
@@ -116,7 +112,6 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	defer ShutdownTracer(tp)
-	tracer = otel.Tracer("client")
 
 	config := loadConfigFromFile()
 	if err := initHtml(config); err != nil {

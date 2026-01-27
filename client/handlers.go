@@ -11,12 +11,16 @@ import (
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 )
 
 // MessageEventHandler チャンネルごとのメッセージ受信ハンドラー: MessageEventHandler はメッセージイベントを処理します。
 func MessageEventHandler(channels *Channels, botID string, gdrive *GDrive) socketmode.SocketmodeHandlerFunc {
 	return func(event *socketmode.Event, client *socketmode.Client) {
+		if tracer == nil {
+			tracer = otel.GetTracerProvider().Tracer("client")
+		}
 		ctx, span := tracer.Start(context.Background(), "MessageEventHandler")
 		defer span.End()
 
@@ -178,6 +182,9 @@ func BotJoinedEventHandler(botID string) socketmode.SocketmodeHandlerFunc {
 
 func SlashCommandHandler(channels *Channels, gdrive *GDrive, basedir string) socketmode.SocketmodeHandlerFunc {
 	return func(event *socketmode.Event, client *socketmode.Client) {
+		if tracer == nil {
+			tracer = otel.GetTracerProvider().Tracer("client")
+		}
 		ctx, span := tracer.Start(context.Background(), "SlashCommandHandler")
 		defer span.End()
 
@@ -256,6 +263,9 @@ func htmlFileNames(basedir string) map[string]bool {
 
 func ChannelArchiveHandler(channels *Channels, gdrive *GDrive) socketmode.SocketmodeHandlerFunc {
 	return func(event *socketmode.Event, client *socketmode.Client) {
+		if tracer == nil {
+			tracer = otel.GetTracerProvider().Tracer("client")
+		}
 		ctx, span := tracer.Start(context.Background(), "ChannelArchiveHandler")
 		defer span.End()
 

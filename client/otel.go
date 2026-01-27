@@ -15,7 +15,10 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+	"go.opentelemetry.io/otel/trace"
 )
+
+var tracer trace.Tracer
 
 // InitTracer OpenTelemetry の Tracer を初期化します
 func InitTracer(ctx context.Context, w io.Writer) (*sdktrace.TracerProvider, error) {
@@ -52,6 +55,10 @@ func InitTracer(ctx context.Context, w io.Writer) (*sdktrace.TracerProvider, err
 	)
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
+
+	if tracer == nil {
+		tracer = tp.Tracer("client")
+	}
 
 	return tp, nil
 }
