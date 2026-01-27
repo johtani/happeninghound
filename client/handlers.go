@@ -11,11 +11,14 @@ import (
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // MessageEventHandler チャンネルごとのメッセージ受信ハンドラー: MessageEventHandler はメッセージイベントを処理します。
 func MessageEventHandler(channels *Channels, botID string, gdrive *GDrive) socketmode.SocketmodeHandlerFunc {
 	return func(event *socketmode.Event, client *socketmode.Client) {
+		ctx, span := tracer.Start(context.Background(), "MessageEventHandler")
+		defer span.End()
 
 		client.Debugf("Starting message handling...")
 		eventPayload, ok := event.Data.(slackevents.EventsAPIEvent)
@@ -37,8 +40,9 @@ func MessageEventHandler(channels *Channels, botID string, gdrive *GDrive) socke
 
 		// チャンネル名取得
 		channelID := p.Channel
+		span.SetAttributes(attribute.String("slack.channel.id", channelID))
 		channel, err := client.GetConversationInfoContext(
-			context.Background(),
+			ctx,
 			&slack.GetConversationInfoInput{ChannelID: channelID},
 		)
 		if err != nil {
@@ -48,6 +52,7 @@ func MessageEventHandler(channels *Channels, botID string, gdrive *GDrive) socke
 			}
 			return
 		}
+		span.SetAttributes(attribute.String("slack.channel.name", channel.Name))
 
 		// JSON データ作成
 		data := map[string]interface{}{
@@ -61,7 +66,7 @@ func MessageEventHandler(channels *Channels, botID string, gdrive *GDrive) socke
 
 		// filesの保存
 		if p.SubType == "file_share" {
-			files, err := downloadImageFiles(client, channel.Name, channels, p.Message.Files, p.EventTimeStamp, gdrive)
+			files, err := downloadImageFiles(ctx, client, channel.Name, channels, p.Message.Files, p.EventTimeStamp, gdrive)
 			if err != nil {
 				client.Debugf("ファイルダウンロードエラー: %v", err)
 			} else {
@@ -76,7 +81,7 @@ func MessageEventHandler(channels *Channels, botID string, gdrive *GDrive) socke
 			return
 		}
 
-		if err := channels.AppendMessage(channel.Name, string(jsonData), gdrive); err != nil {
+		if err := channels.AppendMessage(ctx, channel.Name, string(jsonData), gdrive); err != nil {
 			client.Debugf("ファイル更新エラー: %v", err)
 			if _, _, err := client.PostMessage(channelID, slack.MsgOptionText(fmt.Sprintf("ファイル更新エラー: %v", err), false)); err != nil {
 				fmt.Printf("######### : failed posting message: %v\n", err)
@@ -105,7 +110,7 @@ func skipMessage(p *slackevents.MessageEvent, botMention string, client *socketm
 	return false
 }
 
-func downloadImageFiles(client *socketmode.Client, channelName string, channels *Channels, files []slack.File, timestamp string, gdrive *GDrive) ([]string, error) {
+func downloadImageFiles(ctx context.Context, client *socketmode.Client, channelName string, channels *Channels, files []slack.File, timestamp string, gdrive *GDrive) ([]string, error) {
 	filenames := make([]string, 0)
 	errors := make([]string, 0)
 	for i, file := range files {
@@ -116,7 +121,7 @@ func downloadImageFiles(client *socketmode.Client, channelName string, channels 
 			} else {
 				defer localFile.Close()
 
-				err = client.GetFile(file.URLPrivateDownload, localFile)
+				err = client.GetFileContext(ctx, file.URLPrivateDownload, localFile)
 				if err != nil {
 					errors = append(errors, err.Error())
 				}
@@ -125,7 +130,7 @@ func downloadImageFiles(client *socketmode.Client, channelName string, channels 
 					timestamp,
 					i,
 					file.Filetype))
-				err = gdrive.CreateImageFile(channels.CreateImageFileName(timestamp, i, file.Filetype), channelName,
+				err = gdrive.CreateImageFile(ctx, channels.CreateImageFileName(timestamp, i, file.Filetype), channelName,
 					channels.CreateImageFilePath(
 						channelName,
 						timestamp,
@@ -173,12 +178,15 @@ func BotJoinedEventHandler(botID string) socketmode.SocketmodeHandlerFunc {
 
 func SlashCommandHandler(channels *Channels, gdrive *GDrive, basedir string) socketmode.SocketmodeHandlerFunc {
 	return func(event *socketmode.Event, client *socketmode.Client) {
+		ctx, span := tracer.Start(context.Background(), "SlashCommandHandler")
+		defer span.End()
 
 		ev, ok := event.Data.(slack.SlashCommand)
 		if !ok {
 			client.Debugf("skipped command: %v", event)
 		}
 		client.Ack(*event.Request)
+		span.SetAttributes(attribute.String("slack.command", ev.Command))
 
 		cmd := fmt.Sprintf("%v %v", ev.Command, ev.Text)
 		if _, _, err := client.PostMessage(ev.ChannelID, slack.MsgOptionText(cmd, false)); err != nil {
@@ -186,7 +194,7 @@ func SlashCommandHandler(channels *Channels, gdrive *GDrive, basedir string) soc
 			return
 		}
 
-		msg := executeCommand(ev, channels, gdrive, basedir)
+		msg := executeCommand(ctx, ev, channels, gdrive, basedir)
 
 		if _, _, err := client.PostMessage(ev.ChannelID, slack.MsgOptionText(msg, false)); err != nil {
 			fmt.Printf("######### : failed posting message: %v\n", err)
@@ -195,7 +203,7 @@ func SlashCommandHandler(channels *Channels, gdrive *GDrive, basedir string) soc
 	}
 }
 
-func executeCommand(ev slack.SlashCommand, channels *Channels, gdrive *GDrive, basedir string) string {
+func executeCommand(ctx context.Context, ev slack.SlashCommand, channels *Channels, gdrive *GDrive, basedir string) string {
 	var msg string
 	if strings.HasPrefix(ev.Command, "/make-html") {
 		msg = "Created html file"
@@ -203,7 +211,7 @@ func executeCommand(ev slack.SlashCommand, channels *Channels, gdrive *GDrive, b
 		if len(ev.Text) > 0 {
 			channelName = strings.ReplaceAll(ev.Text, ".jsonl", "")
 		}
-		err := channels.CreateHtmlFile(channelName, gdrive)
+		err := channels.CreateHtmlFile(ctx, channelName, gdrive)
 		if err != nil {
 			fmt.Printf("######### : Got error %v\n", err)
 			msg = fmt.Sprintf("%v\nError: %v", msg, err.Error())
@@ -248,6 +256,9 @@ func htmlFileNames(basedir string) map[string]bool {
 
 func ChannelArchiveHandler(channels *Channels, gdrive *GDrive) socketmode.SocketmodeHandlerFunc {
 	return func(event *socketmode.Event, client *socketmode.Client) {
+		ctx, span := tracer.Start(context.Background(), "ChannelArchiveHandler")
+		defer span.End()
+
 		client.Debugf("Channel archive event handling...")
 		eventPayload, ok := event.Data.(slackevents.EventsAPIEvent)
 		if !ok {
@@ -261,8 +272,10 @@ func ChannelArchiveHandler(channels *Channels, gdrive *GDrive) socketmode.Socket
 			return
 		}
 		channelID := p.Channel
+		span.SetAttributes(attribute.String("slack.channel.id", channelID))
+
 		channel, err := client.GetConversationInfoContext(
-			context.Background(),
+			ctx,
 			&slack.GetConversationInfoInput{ChannelID: channelID},
 		)
 		if err != nil {
@@ -272,10 +285,11 @@ func ChannelArchiveHandler(channels *Channels, gdrive *GDrive) socketmode.Socket
 			}
 			return
 		}
+		span.SetAttributes(attribute.String("slack.channel.name", channel.Name))
 
 		channelName := channel.Name
 		msg := "Created html file"
-		err = channels.CreateHtmlFile(channelName, gdrive)
+		err = channels.CreateHtmlFile(ctx, channelName, gdrive)
 		if err != nil {
 			fmt.Printf("######### : Got error %v\n", err)
 			msg = fmt.Sprintf("%v\nError: %v", msg, err.Error())
