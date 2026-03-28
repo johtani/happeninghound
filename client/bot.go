@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -27,6 +28,9 @@ const ConfigDir = "./config"
 const ConfigFileName = "config.json"
 const CredentialFileName = "credentials.json"
 const HtmlDir = "html"
+const EnvSlackAppToken = "HH_SLACK_APP_TOKEN"
+const EnvSlackBotToken = "HH_SLACK_BOT_TOKEN"
+const EnvGDriveCredentialsJSON = "HH_GDRIVE_CREDENTIALS_JSON"
 
 //go:embed template/*
 var templateFiles embed.FS
@@ -63,23 +67,47 @@ func (c Config) validate() error {
 	return nil
 }
 
-func loadConfigFromFile() Config {
-	file, err := os.Open(path.Join(ConfigDir, ConfigFileName))
+func loadConfigFromFile(configPath string) (Config, error) {
+	file, err := os.Open(configPath)
 	if err != nil {
-		panic(fmt.Sprintf("ファイルの読み込みエラー: %v", err))
+		return Config{}, err
 	}
+	defer file.Close()
+
 	// JSONデコード
 	decoder := json.NewDecoder(file)
 	var config Config
 	err = decoder.Decode(&config)
 	if err != nil {
-		panic(fmt.Sprintf("JSONデコードエラー: %v", err))
+		return Config{}, err
 	}
+	return config, nil
+}
+
+func (c *Config) applyEnvOverrides() {
+	if v := strings.TrimSpace(os.Getenv(EnvSlackAppToken)); v != "" {
+		c.AppToken = v
+	}
+	if v := strings.TrimSpace(os.Getenv(EnvSlackBotToken)); v != "" {
+		c.BotToken = v
+	}
+}
+
+func loadConfig() Config {
+	configPath := path.Join(ConfigDir, ConfigFileName)
+	config, err := loadConfigFromFile(configPath)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			panic(fmt.Sprintf("ファイルの読み込みエラー: %v", err))
+		}
+		config = Config{}
+	}
+
+	config.applyEnvOverrides()
 	err = config.validate()
 	if err != nil {
 		panic(fmt.Sprintf("Validation エラー: %v", err))
 	}
-
 	return config
 }
 
@@ -113,7 +141,7 @@ func Run(ctx context.Context) error {
 	}
 	defer ShutdownTracer(tp)
 
-	config := loadConfigFromFile()
+	config := loadConfig()
 	if err := initHtml(config); err != nil {
 		panic(err)
 	}
@@ -144,7 +172,7 @@ func Run(ctx context.Context) error {
 	socketModeHandler := socketmode.NewSocketmodeHandler(socketClient)
 
 	// Google Drive API クライアントの初期化
-	gdrive := NewGDrive(path.Join(ConfigDir, CredentialFileName), config.BaseDir)
+	gdrive := NewGDrive(config.BaseDir, os.Getenv(EnvGDriveCredentialsJSON), path.Join(ConfigDir, CredentialFileName))
 
 	// メッセージイベントハンドラ登録
 	socketModeHandler.HandleEvents(slackevents.Message, MessageEventHandler(channels, botID, gdrive))

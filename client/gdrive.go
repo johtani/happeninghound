@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
@@ -19,8 +20,15 @@ type GDrive struct {
 }
 
 // NewGDrive GoogleDriveクライアント生成
-func NewGDrive(configPath string, basedir string) *GDrive {
-	client, err := drive.NewService(context.Background(), option.WithCredentialsFile(configPath))
+func NewGDrive(basedir string, credentialsJSON string, credentialsFilePath string) *GDrive {
+	opts := []option.ClientOption{}
+	if strings.TrimSpace(credentialsJSON) != "" {
+		opts = append(opts, option.WithCredentialsJSON([]byte(credentialsJSON)))
+	} else {
+		opts = append(opts, option.WithCredentialsFile(credentialsFilePath))
+	}
+
+	client, err := drive.NewService(context.Background(), opts...)
 	if err != nil {
 		panic(err)
 	}
