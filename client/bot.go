@@ -172,7 +172,10 @@ func Run(ctx context.Context) error {
 	socketModeHandler := socketmode.NewSocketmodeHandler(socketClient)
 
 	// Google Drive API クライアントの初期化
-	gdrive := NewGDrive(config.BaseDir, os.Getenv(EnvGDriveCredentialsJSON), path.Join(ConfigDir, CredentialFileName))
+	gdrive, err := NewGDrive(config.BaseDir, os.Getenv(EnvGDriveCredentialsJSON), path.Join(ConfigDir, CredentialFileName))
+	if err != nil {
+		return fmt.Errorf("Google Drive クライアントの初期化に失敗: %w", err)
+	}
 
 	// メッセージイベントハンドラ登録
 	socketModeHandler.HandleEvents(slackevents.Message, MessageEventHandler(channels, botID, gdrive))
