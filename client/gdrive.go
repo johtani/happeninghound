@@ -19,6 +19,10 @@ type GDrive struct {
 	htmlDir   *drive.File
 }
 
+func (g GDrive) htmlCreateParentID() string {
+	return g.htmlDir.Id
+}
+
 // NewGDrive GoogleDriveクライアント生成
 func NewGDrive(basedir string, credentialsJSON string, credentialsFilePath string) *GDrive {
 	opts := []option.ClientOption{}
@@ -179,7 +183,7 @@ func (g GDrive) UploadHtmlFile(ctx context.Context, name string, filepath string
 
 	f := g.getTargetFile(ctx, name, g.htmlDir.Id)
 	if f == nil {
-		return g.createFile(ctx, name, g.targetDir.Id, filepath)
+		return g.createFile(ctx, name, g.htmlCreateParentID(), filepath)
 	} else {
 		return g.updateFile(ctx, name, f.Id, filepath)
 	}
