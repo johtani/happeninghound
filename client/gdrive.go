@@ -144,6 +144,7 @@ func (g GDrive) createFile(ctx context.Context, name string, parent string, file
 	if err != nil {
 		return err
 	}
+	defer local.Close()
 	driveFile, err := g.client.Files.Create(&drive.File{Name: name, Parents: []string{parent}}).Media(local).Context(ctx).Do()
 	if err != nil {
 		return err
@@ -157,6 +158,7 @@ func (g GDrive) updateFile(ctx context.Context, name, id string, filepath string
 	if err != nil {
 		return err
 	}
+	defer local.Close()
 	driveFile, err := g.client.Files.Update(id, &drive.File{Name: name}).Media(local).Context(ctx).Do()
 	if err != nil {
 		return err
@@ -194,6 +196,7 @@ func (g GDrive) CreateImageFile(ctx context.Context, name string, parent string,
 	if err != nil {
 		return err
 	}
+	defer local.Close()
 	channel, err := g.createDir(ctx, parent, g.imageDir.Id)
 	if err != nil {
 		return err
