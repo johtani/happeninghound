@@ -122,10 +122,12 @@ func initHtml(config Config) error {
 		if err != nil {
 			return fmt.Errorf("CSS %s のオープンに失敗： %v", CSSFile, err)
 		}
+		defer src.Close()
 		dst, err := os.Create(path.Join(config.BaseDir, HtmlDir, CSSFile))
 		if err != nil {
 			return fmt.Errorf("CSS %s の作成に失敗： %v", CSSFile, err)
 		}
+		defer dst.Close()
 		_, err = io.Copy(dst, src)
 		if err != nil {
 			return fmt.Errorf("CSS %s へのコピーに失敗： %v", CSSFile, err)

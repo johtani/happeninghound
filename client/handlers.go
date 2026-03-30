@@ -128,9 +128,8 @@ func downloadImageFiles(ctx context.Context, client *socketmode.Client, channelN
 			if err != nil {
 				errors = append(errors, err.Error())
 			} else {
-				defer localFile.Close()
-
 				err = client.GetFileContext(ctx, file.URLPrivateDownload, localFile)
+				localFile.Close()
 				if err != nil {
 					errors = append(errors, err.Error())
 				}
