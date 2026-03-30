@@ -162,11 +162,22 @@ func (e Entry) MessageWithLinkTag() template.HTML {
 // Timestamp2String Slackから取得した日付データを文字列に成形
 func (e Entry) Timestamp2String() string {
 	splits := strings.Split(e.Timestamp, ".")
+	if len(splits) < 2 {
+		return ""
+	}
 	sec, err := strconv.ParseInt(splits[0], 10, 64)
 	if err != nil {
 		return ""
 	}
-	nano, err := strconv.ParseInt(splits[1], 10, 64)
+	fracStr := splits[1]
+	// 小数部を9桁（ナノ秒）に正規化する
+	const nanoDigits = 9
+	if len(fracStr) < nanoDigits {
+		fracStr = fracStr + strings.Repeat("0", nanoDigits-len(fracStr))
+	} else if len(fracStr) > nanoDigits {
+		fracStr = fracStr[:nanoDigits]
+	}
+	nano, err := strconv.ParseInt(fracStr, 10, 64)
 	if err != nil {
 		return ""
 	}
