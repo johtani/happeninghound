@@ -93,22 +93,21 @@ func (c *Config) applyEnvOverrides() {
 	}
 }
 
-func loadConfig() Config {
+func loadConfig() (Config, error) {
 	configPath := path.Join(ConfigDir, ConfigFileName)
 	config, err := loadConfigFromFile(configPath)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
-			panic(fmt.Sprintf("ファイルの読み込みエラー: %v", err))
+			return Config{}, fmt.Errorf("ファイルの読み込みエラー: %v", err)
 		}
 		config = Config{}
 	}
 
 	config.applyEnvOverrides()
-	err = config.validate()
-	if err != nil {
-		panic(fmt.Sprintf("Validation エラー: %v", err))
+	if err = config.validate(); err != nil {
+		return Config{}, fmt.Errorf("Validation エラー: %v", err)
 	}
-	return config
+	return config, nil
 }
 
 func initHtml(config Config) error {
@@ -143,9 +142,12 @@ func Run(ctx context.Context) error {
 	}
 	defer ShutdownTracer(tp)
 
-	config := loadConfig()
+	config, err := loadConfig()
+	if err != nil {
+		return err
+	}
 	if err := initHtml(config); err != nil {
-		panic(err)
+		return err
 	}
 
 	// 既存のチャンネルデータを読み込む
