@@ -45,8 +45,11 @@ func TestEntry_Timestamp2String(t *testing.T) {
 		timestamp string
 		want      string
 	}{
-		{name: "valid timestamp", timestamp: "1633024800.123456789", want: "2021-09-30 18:00:00"},
+		{name: "valid timestamp 9digits", timestamp: "1633024800.123456789", want: "2021-09-30 18:00:00"},
+		{name: "valid timestamp 6digits", timestamp: "1633024800.123456", want: "2021-09-30 18:00:00"},
+		{name: "valid timestamp 10digits", timestamp: "1633024800.1234567890", want: "2021-09-30 18:00:00"},
 		{name: "invalid timestamp", timestamp: "invalid.timestamp", want: ""},
+		{name: "no dot timestamp", timestamp: "1633024800", want: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
