@@ -12,3 +12,5 @@
 /config/html
 /config/*.jsonl
 *.exe
+happeninghound
+happeninghound-*
