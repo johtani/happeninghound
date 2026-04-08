@@ -8,11 +8,10 @@ import (
 
 func TestEntry_MessageWithLinkTag(t *testing.T) {
 	type fields struct {
-		Timestamp   string
-		Message     string
-		ChannelId   string
-		ChannelName string
-		Files       []string
+		Timestamp string
+		Message   string
+		Channel   Channel
+		Files     []string
 	}
 	tests := []struct {
 		name   string
@@ -27,11 +26,10 @@ func TestEntry_MessageWithLinkTag(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := Entry{
-				Timestamp:   tt.fields.Timestamp,
-				Message:     tt.fields.Message,
-				ChannelId:   tt.fields.ChannelId,
-				ChannelName: tt.fields.ChannelName,
-				Files:       tt.fields.Files,
+				Timestamp: tt.fields.Timestamp,
+				Message:   tt.fields.Message,
+				Channel:   tt.fields.Channel,
+				Files:     tt.fields.Files,
 			}
 			if got := e.MessageWithLinkTag(); got != tt.want {
 				t.Errorf("MessageWithLinkTag() = %v, want %v", got, tt.want)
@@ -72,14 +70,44 @@ func TestParseEntry(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:  "valid json",
-			jsonl: `{"timestamp":"1633024800.123456","message":"hello","channel.id":"C123","channel.name":"general","files":["a.png"]}`,
+			name:  "valid json (new schema)",
+			jsonl: `{"timestamp":"1633024800.123456","message":"hello","channel":{"id":"C123","name":"general"},"files":["a.png"]}`,
 			want: Entry{
-				Timestamp:   "1633024800.123456",
-				Message:     "hello",
-				ChannelId:   "C123",
-				ChannelName: "general",
-				Files:       []string{"a.png"},
+				Timestamp: "1633024800.123456",
+				Message:   "hello",
+				Channel: Channel{
+					ID:   "C123",
+					Name: "general",
+				},
+				Files: []string{"a.png"},
+			},
+			wantErr: false,
+		},
+		{
+			name:  "valid json (legacy schema)",
+			jsonl: `{"timestamp":"1633024800.123456","message":"hello","channel.id":"C999","channel.name":"legacy","files":["a.png"]}`,
+			want: Entry{
+				Timestamp: "1633024800.123456",
+				Message:   "hello",
+				Channel: Channel{
+					ID:   "C999",
+					Name: "legacy",
+				},
+				Files: []string{"a.png"},
+			},
+			wantErr: false,
+		},
+		{
+			name:  "both schema prefers new channel object",
+			jsonl: `{"timestamp":"1633024800.123456","message":"hello","channel":{"id":"C123","name":"general"},"channel.id":"C999","channel.name":"legacy","files":["a.png"]}`,
+			want: Entry{
+				Timestamp: "1633024800.123456",
+				Message:   "hello",
+				Channel: Channel{
+					ID:   "C123",
+					Name: "general",
+				},
+				Files: []string{"a.png"},
 			},
 			wantErr: false,
 		},
