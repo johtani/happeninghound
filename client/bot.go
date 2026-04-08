@@ -105,7 +105,7 @@ func loadConfig() (Config, error) {
 
 	config.applyEnvOverrides()
 	if err = config.validate(); err != nil {
-		return Config{}, fmt.Errorf("Validation エラー: %v", err)
+		return Config{}, fmt.Errorf("validation エラー: %v", err)
 	}
 	return config, nil
 }
@@ -178,7 +178,7 @@ func Run(ctx context.Context) error {
 	// Google Drive API クライアントの初期化
 	gdrive, err := NewGDrive(config.BaseDir, os.Getenv(EnvGDriveCredentialsJSON), path.Join(ConfigDir, CredentialFileName))
 	if err != nil {
-		return fmt.Errorf("Google Drive クライアントの初期化に失敗: %w", err)
+		return fmt.Errorf("google drive クライアントの初期化に失敗: %w", err)
 	}
 
 	// メッセージイベントハンドラ登録
