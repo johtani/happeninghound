@@ -199,9 +199,10 @@ func SlashCommandHandler(channels *Channels, gdrive *GDrive, basedir string) soc
 		ctx, span := tracer.Start(context.Background(), "SlashCommandHandler")
 		defer span.End()
 
-		ev, ok := event.Data.(slack.SlashCommand)
+		ev, ok := slashCommandFromEventData(event.Data)
 		if !ok {
 			client.Debugf("skipped command: %v", event)
+			return
 		}
 		client.Ack(*event.Request)
 		span.SetAttributes(attribute.String("slack.command", ev.Command))
@@ -219,6 +220,11 @@ func SlashCommandHandler(channels *Channels, gdrive *GDrive, basedir string) soc
 			return
 		}
 	}
+}
+
+func slashCommandFromEventData(data interface{}) (slack.SlashCommand, bool) {
+	ev, ok := data.(slack.SlashCommand)
+	return ev, ok
 }
 
 func executeCommand(ctx context.Context, ev slack.SlashCommand, channels *Channels, gdrive *GDrive, basedir string) string {
