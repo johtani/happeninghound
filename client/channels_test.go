@@ -2,6 +2,7 @@ package client
 
 import (
 	"html/template"
+	"reflect"
 	"testing"
 )
 
@@ -58,6 +59,51 @@ func TestEntry_Timestamp2String(t *testing.T) {
 			}
 			if got := e.Timestamp2String(); got != tt.want {
 				t.Errorf("Timestamp2String() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseEntry(t *testing.T) {
+	tests := []struct {
+		name    string
+		jsonl   string
+		want    Entry
+		wantErr bool
+	}{
+		{
+			name:  "valid json",
+			jsonl: `{"timestamp":"1633024800.123456","message":"hello","channel.id":"C123","channel.name":"general","files":["a.png"]}`,
+			want: Entry{
+				Timestamp:   "1633024800.123456",
+				Message:     "hello",
+				ChannelId:   "C123",
+				ChannelName: "general",
+				Files:       []string{"a.png"},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "invalid json",
+			jsonl:   `{"timestamp":"1633024800.123456",`,
+			want:    Entry{},
+			wantErr: true,
+		},
+		{
+			name:    "empty string",
+			jsonl:   ``,
+			want:    Entry{},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseEntry(tt.jsonl)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ParseEntry() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("ParseEntry() = %+v, want %+v", got, tt.want)
 			}
 		})
 	}
