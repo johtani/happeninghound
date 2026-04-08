@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"golang.org/x/oauth2/google"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
 )
@@ -27,14 +28,26 @@ func (g GDrive) htmlCreateParentID() string {
 func NewGDrive(basedir string, credentialsJSON string, credentialsFilePath string) (*GDrive, error) {
 	opts := []option.ClientOption{}
 	if strings.TrimSpace(credentialsJSON) != "" {
-		opts = append(opts, option.WithCredentialsJSON([]byte(credentialsJSON)))
+		creds, err := google.CredentialsFromJSON(context.Background(), []byte(credentialsJSON), drive.DriveScope)
+		if err != nil {
+			return nil, fmt.Errorf("google credentials json の読み込みに失敗: %w", err)
+		}
+		opts = append(opts, option.WithCredentials(creds))
 	} else {
-		opts = append(opts, option.WithCredentialsFile(credentialsFilePath))
+		b, err := os.ReadFile(credentialsFilePath)
+		if err != nil {
+			return nil, fmt.Errorf("credentials ファイルの読み込みに失敗: %w", err)
+		}
+		creds, err := google.CredentialsFromJSON(context.Background(), b, drive.DriveScope)
+		if err != nil {
+			return nil, fmt.Errorf("google credentials ファイルの解析に失敗: %w", err)
+		}
+		opts = append(opts, option.WithCredentials(creds))
 	}
 
 	client, err := drive.NewService(context.Background(), opts...)
 	if err != nil {
-		return nil, fmt.Errorf("Google Drive サービスの初期化に失敗: %w", err)
+		return nil, fmt.Errorf("google drive サービスの初期化に失敗: %w", err)
 	}
 
 	ctx := context.Background()

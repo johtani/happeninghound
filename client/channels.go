@@ -42,8 +42,7 @@ func (c *Channels) AppendMessage(ctx context.Context, channelName, jsonstring st
 	if _, err := f.WriteString(fmt.Sprintf("%v\n", jsonstring)); err != nil {
 		return fmt.Errorf("ファイル %s のオープンに失敗： %w", filePath, err)
 	}
-	err = gdrive.UploadFile(ctx, channelFileName, filePath)
-	return nil
+	return gdrive.UploadFile(ctx, channelFileName, filePath)
 }
 
 func (c *Channels) createChannelFilePath(channelFileName string) string {
