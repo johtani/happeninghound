@@ -61,12 +61,12 @@ func MessageEventHandler(channels *Channels, botID string, gdrive *GDrive) socke
 		span.SetAttributes(attribute.String("slack.channel.name", channel.Name))
 
 		// JSON データ作成
-		data := map[string]interface{}{
-			"timestamp": p.EventTimeStamp,
-			"message":   p.Text,
-			"channel": map[string]string{
-				"id":   channelID,
-				"name": channel.Name,
+		data := Entry{
+			Timestamp: p.EventTimeStamp,
+			Message:   p.Text,
+			Channel: Channel{
+				ID:   channelID,
+				Name: channel.Name,
 			},
 		}
 
@@ -76,7 +76,7 @@ func MessageEventHandler(channels *Channels, botID string, gdrive *GDrive) socke
 			if err != nil {
 				client.Debugf("ファイルダウンロードエラー: %v", err)
 			} else {
-				data["files"] = files
+				data.Files = files
 			}
 
 		}

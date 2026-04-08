@@ -139,11 +139,16 @@ func (c *Channels) CreateHtmlFile(ctx context.Context, channelName string, gdriv
 
 // Entry jsonlファイルのデータ読み込み用構造体
 type Entry struct {
-	Timestamp   string   `json:"timestamp"`
-	Message     string   `json:"message"`
-	ChannelId   string   `json:"channel.id"`
-	ChannelName string   `json:"channel.name"`
-	Files       []string `json:"files"`
+	Timestamp string   `json:"timestamp"`
+	Message   string   `json:"message"`
+	Channel   Channel  `json:"channel"`
+	Files     []string `json:"files"`
+}
+
+// Channel はメッセージが投稿されたチャンネル情報です。
+type Channel struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // 正規表現をコンパイル
@@ -195,5 +200,21 @@ func ParseEntry(jsonl string) (Entry, error) {
 	if err := json.Unmarshal([]byte(jsonl), &entry); err != nil {
 		return Entry{}, fmt.Errorf("JSONLのパースに失敗: %w", err)
 	}
+
+	// 後方互換: 旧形式(channel.id/channel.name)から欠損値を補完する。
+	var legacy struct {
+		ChannelID   string `json:"channel.id"`
+		ChannelName string `json:"channel.name"`
+	}
+	if err := json.Unmarshal([]byte(jsonl), &legacy); err != nil {
+		return Entry{}, fmt.Errorf("JSONLのパースに失敗: %w", err)
+	}
+	if entry.Channel.ID == "" {
+		entry.Channel.ID = legacy.ChannelID
+	}
+	if entry.Channel.Name == "" {
+		entry.Channel.Name = legacy.ChannelName
+	}
+
 	return entry, nil
 }
