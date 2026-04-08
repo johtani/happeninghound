@@ -72,7 +72,7 @@ HappeningHoundは OpenTelemetry を利用したトレーシングに対応して
 - `OTEL_EXPORTER`: `otlp` を指定すると OTLP エクスポーターを使用します。指定しない場合は `stdout` になります。
 - `OTEL_EXPORTER_OTLP_ENDPOINT`: OTLP コレクターのエンドポイント（例: `http://localhost:4317`）。スキーム（http:// または https://）を含める必要があります。
 - `OTEL_EXPORTER_OTLP_PROTOCOL`: 通信プロトコル。`grpc` または `http/protobuf` を指定可能（デフォルトは `grpc`）。
-- `OTEL_SERVICE_NAME`: サービス名（デフォルトは `happeninghound`）。
+- `OTEL_SERVICE_NAME`: サービス名（未設定、空文字、空白のみの場合は `happeninghound`）。
 
 ### バックエンドへの送信例 (gRPC)
 
