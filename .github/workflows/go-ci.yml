@@ -21,8 +21,27 @@ jobs:
     - name: Install dependencies
       run: go mod download
 
+    - name: Check formatting (gofmt)
+      run: |
+        unformatted="$(gofmt -l .)"
+        if [ -n "$unformatted" ]; then
+          echo "The following files are not gofmt-ed:"
+          echo "$unformatted"
+          exit 1
+        fi
+
+    - name: Run go vet
+      run: go vet ./...
+
     - name: Build
       run: go build -v ./...
 
-    - name: Test
-      run: go test -v ./...
+    - name: Test (race)
+      env:
+        CGO_ENABLED: 1
+      run: go test -race -v ./...
+
+    - name: Run staticcheck
+      run: |
+        go install honnef.co/go/tools/cmd/staticcheck@latest
+        "$(go env GOPATH)/bin/staticcheck" ./...
