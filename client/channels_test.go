@@ -1,8 +1,10 @@
 package client
 
 import (
+	"fmt"
 	"html/template"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -134,5 +136,21 @@ func TestParseEntry(t *testing.T) {
 				t.Errorf("ParseEntry() = %+v, want %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestParseEntriesFromJSONL_LongLine(t *testing.T) {
+	longMessage := strings.Repeat("a", 70*1024)
+	input := fmt.Sprintf("{\"timestamp\":\"1633024800.123456\",\"message\":\"%s\",\"channel\":{\"id\":\"C123\",\"name\":\"general\"},\"files\":[]}\n", longMessage)
+
+	entries, err := parseEntriesFromJSONL(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("parseEntriesFromJSONL() error = %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("parseEntriesFromJSONL() len = %d, want 1", len(entries))
+	}
+	if entries[0].Message != longMessage {
+		t.Errorf("parseEntriesFromJSONL() message length = %d, want %d", len(entries[0].Message), len(longMessage))
 	}
 }

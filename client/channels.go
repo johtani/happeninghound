@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"os"
 	"path"
@@ -21,6 +22,11 @@ type Channels struct {
 	basedir  string
 	authorID string
 }
+
+const (
+	initialScannerBufferBytes = 64 * 1024
+	maxJSONLLineBytes         = 1024 * 1024
+)
 
 // NewChannels は Channels 構造体の新しいインスタンスを作成します。
 func NewChannels(basedir, authorID string) (*Channels, error) {
@@ -96,18 +102,11 @@ func (c *Channels) CreateHtmlFile(ctx context.Context, channelName string, gdriv
 		return fmt.Errorf("ファイル %s のオープンに失敗： %w", filePath, err)
 	}
 	defer f.Close()
-	scanner := bufio.NewScanner(f)
-	var contents []Entry
-	for scanner.Scan() {
-		//1行ずつパース
-		line := scanner.Text()
-		entry, err := ParseEntry(line)
-		if err != nil {
-			log.Printf("行のパースをスキップ: %v", err)
-			continue
-		}
-		contents = append(contents, entry)
+	contents, err := parseEntriesFromJSONL(f)
+	if err != nil {
+		return err
 	}
+
 	// テンプレートエンジンに適用
 	values := map[string]interface{}{
 		"contents": contents,
@@ -135,6 +134,27 @@ func (c *Channels) CreateHtmlFile(ctx context.Context, channelName string, gdriv
 		return fmt.Errorf(" Google DriveへのHTMLファイルアップロードに失敗： %w", err)
 	}
 	return nil
+}
+
+func parseEntriesFromJSONL(r io.Reader) ([]Entry, error) {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, initialScannerBufferBytes), maxJSONLLineBytes)
+
+	var contents []Entry
+	for scanner.Scan() {
+		// 1行ずつパース
+		line := scanner.Text()
+		entry, err := ParseEntry(line)
+		if err != nil {
+			log.Printf("行のパースをスキップ: %v", err)
+			continue
+		}
+		contents = append(contents, entry)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("JSONLの読み込みに失敗: %w", err)
+	}
+	return contents, nil
 }
 
 // Entry jsonlファイルのデータ読み込み用構造体
