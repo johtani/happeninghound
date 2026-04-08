@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -19,6 +20,14 @@ import (
 )
 
 var tracer trace.Tracer
+
+func otelServiceName() string {
+	serviceName := strings.TrimSpace(os.Getenv("OTEL_SERVICE_NAME"))
+	if serviceName == "" {
+		return "happeninghound"
+	}
+	return serviceName
+}
 
 // InitTracer OpenTelemetry の Tracer を初期化します
 func InitTracer(ctx context.Context, w io.Writer) (*sdktrace.TracerProvider, error) {
@@ -60,7 +69,7 @@ func InitTracer(ctx context.Context, w io.Writer) (*sdktrace.TracerProvider, err
 		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(resource.NewWithAttributes(
 			semconv.SchemaURL,
-			semconv.ServiceNameKey.String("happeninghound"),
+			semconv.ServiceNameKey.String(otelServiceName()),
 		)),
 	)
 	otel.SetTracerProvider(tp)
