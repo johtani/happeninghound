@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -101,7 +102,12 @@ func (c *Channels) CreateHtmlFile(ctx context.Context, channelName string, gdriv
 	for scanner.Scan() {
 		//1行ずつパース
 		line := scanner.Text()
-		contents = append(contents, ParseEntry(line))
+		entry, err := ParseEntry(line)
+		if err != nil {
+			log.Printf("行のパースをスキップ: %v", err)
+			continue
+		}
+		contents = append(contents, entry)
 	}
 	// テンプレートエンジンに適用
 	values := map[string]interface{}{
@@ -185,8 +191,10 @@ func (e Entry) Timestamp2String() string {
 }
 
 // ParseEntry 1行jsonをEntryに変換
-func ParseEntry(jsonl string) Entry {
+func ParseEntry(jsonl string) (Entry, error) {
 	var entry Entry
-	_ = json.Unmarshal([]byte(jsonl), &entry)
-	return entry
+	if err := json.Unmarshal([]byte(jsonl), &entry); err != nil {
+		return Entry{}, fmt.Errorf("JSONLのパースに失敗: %w", err)
+	}
+	return entry, nil
 }
