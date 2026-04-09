@@ -202,6 +202,114 @@ func TestResolveMakeMDParams(t *testing.T) {
 	}
 }
 
+func TestResolveMakeHTMLParams(t *testing.T) {
+	tests := []struct {
+		name         string
+		ev           slack.SlashCommand
+		wantChannel  string
+		wantSince    bool
+		wantErr      bool
+		wantErrUsage bool
+	}{
+		{
+			name: "no args uses current channel",
+			ev: slack.SlashCommand{
+				ChannelName: "general",
+			},
+			wantChannel: "general",
+			wantSince:   false,
+			wantErr:     false,
+		},
+		{
+			name: "single period arg",
+			ev: slack.SlashCommand{
+				ChannelName: "general",
+				Text:        "30d",
+			},
+			wantChannel: "general",
+			wantSince:   true,
+			wantErr:     false,
+		},
+		{
+			name: "single channel arg",
+			ev: slack.SlashCommand{
+				ChannelName: "general",
+				Text:        "dev-team.jsonl",
+			},
+			wantChannel: "dev-team",
+			wantSince:   false,
+			wantErr:     false,
+		},
+		{
+			name: "channel and period",
+			ev: slack.SlashCommand{
+				ChannelName: "general",
+				Text:        "dev-team 7d",
+			},
+			wantChannel: "dev-team",
+			wantSince:   true,
+			wantErr:     false,
+		},
+		{
+			name: "too many args",
+			ev: slack.SlashCommand{
+				ChannelName: "general",
+				Text:        "a b c",
+			},
+			wantErr:      true,
+			wantErrUsage: true,
+		},
+		{
+			name: "invalid second arg includes usage",
+			ev: slack.SlashCommand{
+				ChannelName: "general",
+				Text:        "dev-team 12h",
+			},
+			wantErr:      true,
+			wantErrUsage: true,
+		},
+		{
+			name: "invalid period value includes usage",
+			ev: slack.SlashCommand{
+				ChannelName: "general",
+				Text:        "0d",
+			},
+			wantErr:      true,
+			wantErrUsage: true,
+		},
+		{
+			name: "single invalid period-like arg includes usage",
+			ev: slack.SlashCommand{
+				ChannelName: "general",
+				Text:        "12h",
+			},
+			wantErr:      true,
+			wantErrUsage: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ch, since, err := resolveMakeHTMLParams(tt.ev)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("resolveMakeHTMLParams() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				if tt.wantErrUsage && (err == nil || !strings.Contains(err.Error(), "usage: /make-html [channel] [period] or /make-html [period]")) {
+					t.Fatalf("resolveMakeHTMLParams() expected usage in error, got: %v", err)
+				}
+				return
+			}
+			if ch != tt.wantChannel {
+				t.Fatalf("resolveMakeHTMLParams() channel = %q, want %q", ch, tt.wantChannel)
+			}
+			if (since != nil) != tt.wantSince {
+				t.Fatalf("resolveMakeHTMLParams() since nil=%v, wantSince %v", since == nil, tt.wantSince)
+			}
+		})
+	}
+}
+
 func TestParseRelativePeriod(t *testing.T) {
 	tests := []struct {
 		name      string

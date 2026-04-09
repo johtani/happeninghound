@@ -105,7 +105,7 @@ func (c *Channels) CreateImageFileName(timestamp string, index int, filetype str
 	return fmt.Sprintf("%s_%v.%s", timestamp, index, filetype)
 }
 
-func (c *Channels) CreateHtmlFile(ctx context.Context, channelName string, gdrive *GDrive) error {
+func (c *Channels) CreateHtmlFile(ctx context.Context, channelName string, gdrive *GDrive, since *time.Time) error {
 	ctx, span := tracer.Start(ctx, "CreateHtmlFile")
 	defer span.End()
 
@@ -124,6 +124,7 @@ func (c *Channels) CreateHtmlFile(ctx context.Context, channelName string, gdriv
 	if err != nil {
 		return err
 	}
+	contents = filterEntriesSince(contents, since)
 	contents = c.attachLinkPreviews(ctx, contents)
 
 	// テンプレートエンジンに適用
@@ -153,7 +154,7 @@ func (c *Channels) CreateHtmlFile(ctx context.Context, channelName string, gdriv
 	}
 	_ = out.Close()
 	if err := gdrive.UploadHtmlFile(ctx, htmlFileName, htmlFilePath); err != nil {
-		return fmt.Errorf(" Google DriveへのHTMLファイルアップロードに失敗： %w", err)
+		return fmt.Errorf("Google DriveへのHTMLファイルアップロードに失敗： %w", err)
 	}
 	return nil
 }

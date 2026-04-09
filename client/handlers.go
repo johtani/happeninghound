@@ -241,12 +241,15 @@ func executeCommand(ctx context.Context, ev slack.SlashCommand, channels *Channe
 	var msg string
 	if strings.HasPrefix(ev.Command, "/make-html") {
 		msg = "Created html file"
-		channelName := resolvedChannelName(ev)
+		channelName, since, err := resolveMakeHTMLParams(ev)
+		if err != nil {
+			return fmt.Sprintf("%v\nError: %v", msg, err.Error())
+		}
 		if err := validateChannelName(channelName); err != nil {
 			msg = fmt.Sprintf("%v\nError: %v", msg, err.Error())
 			return msg
 		}
-		err := channels.CreateHtmlFile(ctx, channelName, gdrive)
+		err = channels.CreateHtmlFile(ctx, channelName, gdrive, since)
 		if err != nil {
 			fmt.Printf("######### : Got error %v\n", err)
 			msg = fmt.Sprintf("%v\nError: %v", msg, err.Error())
@@ -318,6 +321,41 @@ func resolvedChannelName(ev slack.SlashCommand) string {
 		channelName = strings.TrimSpace(strings.TrimSuffix(raw, ".jsonl"))
 	}
 	return channelName
+}
+
+func resolveMakeHTMLParams(ev slack.SlashCommand) (string, *time.Time, error) {
+	const usage = "usage: /make-html [channel] [period] or /make-html [period]"
+	periodLikePattern := regexp.MustCompile(`^\d+[a-z]+$`)
+
+	channelName := strings.TrimSpace(ev.ChannelName)
+	args := strings.Fields(strings.TrimSpace(ev.Text))
+	if len(args) == 0 {
+		return channelName, nil, nil
+	}
+	if len(args) > 2 {
+		return "", nil, fmt.Errorf("invalid args: expected /make-html [channel] [period] or /make-html [period] (%s)", usage)
+	}
+
+	if len(args) == 1 {
+		if since, ok, err := parseRelativePeriod(args[0]); err != nil {
+			return "", nil, fmt.Errorf("%w. %s", err, usage)
+		} else if ok {
+			return channelName, since, nil
+		}
+		if periodLikePattern.MatchString(strings.ToLower(args[0])) {
+			return "", nil, fmt.Errorf("invalid period: %q (e.g. 30d). %s", args[0], usage)
+		}
+		return strings.TrimSpace(strings.TrimSuffix(args[0], ".jsonl")), nil, nil
+	}
+
+	since, ok, err := parseRelativePeriod(args[1])
+	if err != nil {
+		return "", nil, fmt.Errorf("%w. %s", err, usage)
+	}
+	if !ok {
+		return "", nil, fmt.Errorf("invalid period: %q (e.g. 30d). %s", args[1], usage)
+	}
+	return strings.TrimSpace(strings.TrimSuffix(args[0], ".jsonl")), since, nil
 }
 
 func validateChannelName(channelName string) error {
@@ -431,7 +469,7 @@ func ChannelArchiveHandler(channels *Channels, gdrive *GDrive) socketmode.Socket
 
 		channelName := channel.Name
 		msg := "Created html file"
-		err = channels.CreateHtmlFile(ctx, channelName, gdrive)
+		err = channels.CreateHtmlFile(ctx, channelName, gdrive, nil)
 		if err != nil {
 			fmt.Printf("######### : Got error %v\n", err)
 			msg = fmt.Sprintf("%v\nError: %v", msg, err.Error())

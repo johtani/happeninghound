@@ -2,6 +2,7 @@ package client
 
 import (
 	"archive/zip"
+	"context"
 	"fmt"
 	"html/template"
 	"os"
@@ -10,6 +11,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"google.golang.org/api/drive/v3"
 )
 
 func TestEntry_MessageWithLinkTag(t *testing.T) {
@@ -316,5 +320,47 @@ func TestCreateMarkdownZip_MissingAttachmentContinues(t *testing.T) {
 	}
 	if len(result.Warnings) == 0 {
 		t.Fatalf("CreateMarkdownZip() Warnings empty, want warning")
+	}
+}
+
+func TestCreateHtmlFile_WithSinceFiltersEntries(t *testing.T) {
+	tracer = otel.GetTracerProvider().Tracer("client-test")
+
+	baseDir := t.TempDir()
+	c := &Channels{basedir: baseDir}
+	jsonl := strings.Join([]string{
+		`{"timestamp":"1711670400.000000","message":"old-message","channel":{"id":"C1","name":"general"},"files":[]}`,
+		`{"timestamp":"1775088000.000000","message":"new-message","channel":{"id":"C1","name":"general"},"files":[]}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(baseDir, "general.jsonl"), []byte(jsonl), 0644); err != nil {
+		t.Fatalf("write jsonl: %v", err)
+	}
+
+	g := &GDrive{
+		htmlDir: &drive.File{Id: "html-dir-id"},
+		getTargetFileFn: func(ctx context.Context, filename, dirid string) *drive.File {
+			return nil
+		},
+		createFileFn: func(ctx context.Context, name, parent, filePath string) error {
+			return nil
+		},
+	}
+
+	since := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	if err := c.CreateHtmlFile(context.Background(), "general", g, &since); err != nil {
+		t.Fatalf("CreateHtmlFile() error = %v", err)
+	}
+
+	htmlPath := filepath.Join(baseDir, "html", "general.html")
+	b, err := os.ReadFile(htmlPath)
+	if err != nil {
+		t.Fatalf("read html: %v", err)
+	}
+	got := string(b)
+	if strings.Contains(got, "old-message") {
+		t.Fatalf("CreateHtmlFile() output contains old message unexpectedly")
+	}
+	if !strings.Contains(got, "new-message") {
+		t.Fatalf("CreateHtmlFile() output missing new message")
 	}
 }
