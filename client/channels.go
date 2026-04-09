@@ -19,8 +19,9 @@ import (
 
 // Channels はチャンネルデータの管理を行います。
 type Channels struct {
-	basedir  string
-	authorID string
+	basedir        string
+	authorID       string
+	previewFetcher linkPreviewFetchFunc
 }
 
 const (
@@ -30,7 +31,11 @@ const (
 
 // NewChannels は Channels 構造体の新しいインスタンスを作成します。
 func NewChannels(basedir, authorID string) (*Channels, error) {
-	return &Channels{basedir: basedir, authorID: authorID}, nil
+	return &Channels{
+		basedir:        basedir,
+		authorID:       authorID,
+		previewFetcher: defaultLinkPreviewFetcher,
+	}, nil
 }
 
 func (c *Channels) AppendMessage(ctx context.Context, channelName, jsonstring string, gdrive *GDrive) error {
@@ -106,6 +111,7 @@ func (c *Channels) CreateHtmlFile(ctx context.Context, channelName string, gdriv
 	if err != nil {
 		return err
 	}
+	contents = c.attachLinkPreviews(ctx, contents)
 
 	// テンプレートエンジンに適用
 	values := map[string]interface{}{
@@ -159,10 +165,11 @@ func parseEntriesFromJSONL(r io.Reader) ([]Entry, error) {
 
 // Entry jsonlファイルのデータ読み込み用構造体
 type Entry struct {
-	Timestamp string   `json:"timestamp"`
-	Message   string   `json:"message"`
-	Channel   Channel  `json:"channel"`
-	Files     []string `json:"files"`
+	Timestamp string       `json:"timestamp"`
+	Message   string       `json:"message"`
+	Channel   Channel      `json:"channel"`
+	Files     []string     `json:"files"`
+	Preview   *LinkPreview `json:"-"`
 }
 
 // Channel はメッセージが投稿されたチャンネル情報です。
@@ -171,21 +178,90 @@ type Channel struct {
 	Name string `json:"name"`
 }
 
-// 正規表現をコンパイル
-var re = regexp.MustCompile(`&lt;https?://[^\s]+&gt;`)
+// Slack形式のリンクトークン(<https://example.com|label>)を抽出する。
+var slackLinkTokenRe = regexp.MustCompile(`<https?://[^>\s]+(?:\|[^>\n]+)?>`)
 
 // MessageWithLinkTag メッセージに含まれるリンクをHTMLタグに変換
 func (e Entry) MessageWithLinkTag() template.HTML {
-	if strings.Contains(e.Message, "\u003chttp") {
-
-		// 文字列を置換
-		result := re.ReplaceAllStringFunc(template.HTMLEscapeString(e.Message), func(url string) string {
-			tmp := url[len("&lt;") : len(url)-len("&gt;")]
-			return fmt.Sprintf("<a href=\"%s\" target=\"_blank\">%s</a>", tmp, tmp)
-		})
-		return template.HTML(result)
-	} else {
+	matches := slackLinkTokenRe.FindAllStringIndex(e.Message, -1)
+	if len(matches) == 0 {
 		return template.HTML(template.HTMLEscapeString(e.Message))
+	}
+
+	var b strings.Builder
+	last := 0
+	for _, match := range matches {
+		b.WriteString(template.HTMLEscapeString(e.Message[last:match[0]]))
+		token := e.Message[match[0]:match[1]]
+		b.WriteString(slackLinkTokenToHTML(token))
+		last = match[1]
+	}
+	b.WriteString(template.HTMLEscapeString(e.Message[last:]))
+	return template.HTML(b.String())
+}
+
+// LinkURLs はメッセージ中のSlackリンクトークンからURLを抽出する。
+func (e Entry) LinkURLs() []string {
+	matches := slackLinkTokenRe.FindAllString(e.Message, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	urls := make([]string, 0, len(matches))
+	for _, token := range matches {
+		parsed := parseSlackLinkToken(token)
+		if parsed.URL != "" {
+			urls = append(urls, parsed.URL)
+		}
+	}
+	return urls
+}
+
+// IsLinkOnlyMessage は、空白を除いてSlackリンクトークンのみで構成されるメッセージかを判定する。
+func (e Entry) IsLinkOnlyMessage() bool {
+	message := strings.TrimSpace(e.Message)
+	if message == "" {
+		return false
+	}
+
+	matches := slackLinkTokenRe.FindAllStringIndex(message, -1)
+	if len(matches) == 0 {
+		return false
+	}
+
+	last := 0
+	for _, match := range matches {
+		if strings.TrimSpace(message[last:match[0]]) != "" {
+			return false
+		}
+		last = match[1]
+	}
+	return strings.TrimSpace(message[last:]) == ""
+}
+
+func slackLinkTokenToHTML(token string) string {
+	parsed := parseSlackLinkToken(token)
+	linkText := parsed.URL
+	if strings.TrimSpace(parsed.Label) != "" {
+		linkText = parsed.Label
+	}
+	return fmt.Sprintf(
+		"<a href=\"%s\" target=\"_blank\" rel=\"noopener noreferrer\">%s</a>",
+		template.HTMLEscapeString(parsed.URL),
+		template.HTMLEscapeString(linkText),
+	)
+}
+
+type slackLinkToken struct {
+	URL   string
+	Label string
+}
+
+func parseSlackLinkToken(token string) slackLinkToken {
+	raw := token[1 : len(token)-1]
+	url, label, _ := strings.Cut(raw, "|")
+	return slackLinkToken{
+		URL:   url,
+		Label: label,
 	}
 }
 

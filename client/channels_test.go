@@ -21,8 +21,11 @@ func TestEntry_MessageWithLinkTag(t *testing.T) {
 		want   template.HTML
 	}{
 		{name: "no link", fields: fields{Message: "no link"}, want: "no link"},
-		{name: "one link", fields: fields{Message: "a\u003chttps://example.com/index.html\u003e"}, want: "a<a href=\"https://example.com/index.html\" target=\"_blank\">https://example.com/index.html</a>"},
-		{name: "two links", fields: fields{Message: "a\u003chttps://example.com/index.html\u003e b\u003chttps://example.com/index.html\u003e"}, want: "a<a href=\"https://example.com/index.html\" target=\"_blank\">https://example.com/index.html</a> b<a href=\"https://example.com/index.html\" target=\"_blank\">https://example.com/index.html</a>"},
+		{name: "one link", fields: fields{Message: "a\u003chttps://example.com/index.html\u003e"}, want: "a<a href=\"https://example.com/index.html\" target=\"_blank\" rel=\"noopener noreferrer\">https://example.com/index.html</a>"},
+		{name: "two links", fields: fields{Message: "a\u003chttps://example.com/index.html\u003e b\u003chttps://example.com/index.html\u003e"}, want: "a<a href=\"https://example.com/index.html\" target=\"_blank\" rel=\"noopener noreferrer\">https://example.com/index.html</a> b<a href=\"https://example.com/index.html\" target=\"_blank\" rel=\"noopener noreferrer\">https://example.com/index.html</a>"},
+		{name: "link with label", fields: fields{Message: "\u003chttps://example.com|example\u003e"}, want: "<a href=\"https://example.com\" target=\"_blank\" rel=\"noopener noreferrer\">example</a>"},
+		{name: "text escaped with link", fields: fields{Message: "x < y \u003chttps://example.com|z\u003e"}, want: "x &lt; y <a href=\"https://example.com\" target=\"_blank\" rel=\"noopener noreferrer\">z</a>"},
+		{name: "label escaped", fields: fields{Message: "\u003chttps://example.com|a&b\u003e"}, want: "<a href=\"https://example.com\" target=\"_blank\" rel=\"noopener noreferrer\">a&amp;b</a>"},
 		{name: "><><", fields: fields{Message: "><><"}, want: template.HTML(template.HTMLEscapeString("><><"))},
 	}
 	for _, tt := range tests {
@@ -35,6 +38,30 @@ func TestEntry_MessageWithLinkTag(t *testing.T) {
 			}
 			if got := e.MessageWithLinkTag(); got != tt.want {
 				t.Errorf("MessageWithLinkTag() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEntry_IsLinkOnlyMessage(t *testing.T) {
+	tests := []struct {
+		name    string
+		message string
+		want    bool
+	}{
+		{name: "single link", message: "<https://example.com>", want: true},
+		{name: "single link with label", message: "<https://example.com|example>", want: true},
+		{name: "multiple links with spaces", message: " <https://a.example>  <https://b.example|b> ", want: true},
+		{name: "text and link", message: "note <https://example.com>", want: false},
+		{name: "no link", message: "hello", want: false},
+		{name: "empty", message: "   ", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := Entry{Message: tt.message}
+			if got := e.IsLinkOnlyMessage(); got != tt.want {
+				t.Errorf("IsLinkOnlyMessage() = %v, want %v", got, tt.want)
 			}
 		})
 	}
