@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"regexp"
 	"strings"
 
 	"github.com/slack-go/slack"
@@ -14,6 +15,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 )
+
+var channelNamePattern = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
 // MessageEventHandler チャンネルごとのメッセージ受信ハンドラー: MessageEventHandler はメッセージイベントを処理します。
 func MessageEventHandler(channels *Channels, botID string, gdrive *GDrive) socketmode.SocketmodeHandlerFunc {
@@ -234,9 +237,10 @@ func executeCommand(ctx context.Context, ev slack.SlashCommand, channels *Channe
 	var msg string
 	if strings.HasPrefix(ev.Command, "/make-html") {
 		msg = "Created html file"
-		channelName := ev.ChannelName
-		if len(ev.Text) > 0 {
-			channelName = strings.ReplaceAll(ev.Text, ".jsonl", "")
+		channelName := resolvedChannelName(ev)
+		if err := validateChannelName(channelName); err != nil {
+			msg = fmt.Sprintf("%v\nError: %v", msg, err.Error())
+			return msg
 		}
 		err := channels.CreateHtmlFile(ctx, channelName, gdrive)
 		if err != nil {
@@ -266,6 +270,24 @@ func executeCommand(ctx context.Context, ev slack.SlashCommand, channels *Channe
 		msg = "Unknown command..."
 	}
 	return msg
+}
+
+func resolvedChannelName(ev slack.SlashCommand) string {
+	channelName := strings.TrimSpace(ev.ChannelName)
+	if raw := strings.TrimSpace(ev.Text); raw != "" {
+		channelName = strings.TrimSpace(strings.TrimSuffix(raw, ".jsonl"))
+	}
+	return channelName
+}
+
+func validateChannelName(channelName string) error {
+	if channelName == "" {
+		return fmt.Errorf("invalid channel name: must not be empty")
+	}
+	if !channelNamePattern.MatchString(channelName) {
+		return fmt.Errorf("invalid channel name %q: allowed pattern is [a-z0-9_-]+", channelName)
+	}
+	return nil
 }
 
 func htmlFileNames(basedir string) map[string]bool {

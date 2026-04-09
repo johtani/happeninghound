@@ -3,6 +3,7 @@ package client
 import (
 	"fmt"
 	"html/template"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -182,5 +183,33 @@ func TestParseEntriesFromJSONL_LongLine(t *testing.T) {
 	}
 	if entries[0].Message != longMessage {
 		t.Errorf("parseEntriesFromJSONL() message length = %d, want %d", len(entries[0].Message), len(longMessage))
+	}
+}
+
+func TestChannels_safeJoinUnderBase(t *testing.T) {
+	baseDir := t.TempDir()
+	c := &Channels{basedir: baseDir}
+
+	tests := []struct {
+		name    string
+		relPath string
+		wantErr bool
+	}{
+		{name: "jsonl file under base", relPath: "general.jsonl", wantErr: false},
+		{name: "html file under sub dir", relPath: filepath.Join("html", "general.html"), wantErr: false},
+		{name: "parent traversal", relPath: filepath.Join("..", "secret.txt"), wantErr: true},
+		{name: "absolute path", relPath: filepath.Join(baseDir, "outside.txt"), wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := c.safeJoinUnderBase(tt.relPath)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("safeJoinUnderBase() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err == nil && !strings.HasPrefix(got, baseDir) {
+				t.Fatalf("safeJoinUnderBase() path = %q, want prefix %q", got, baseDir)
+			}
+		})
 	}
 }
