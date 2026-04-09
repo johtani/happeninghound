@@ -13,11 +13,14 @@ import (
 )
 
 type GDrive struct {
-	client    *drive.Service
-	baseDir   string
-	targetDir *drive.File
-	imageDir  *drive.File
-	htmlDir   *drive.File
+	client          *drive.Service
+	baseDir         string
+	targetDir       *drive.File
+	imageDir        *drive.File
+	htmlDir         *drive.File
+	getTargetFileFn func(ctx context.Context, filename, dirid string) *drive.File
+	createFileFn    func(ctx context.Context, name, parent, filepath string) error
+	updateFileFn    func(ctx context.Context, name, id, filepath string) error
 }
 
 func (g GDrive) htmlCreateParentID() string {
@@ -231,11 +234,11 @@ func (g GDrive) UploadFile(ctx context.Context, name string, filepath string) er
 	ctx, span := tracer.Start(ctx, "GDrive.UploadFile")
 	defer span.End()
 
-	f := g.getTargetFile(ctx, name, g.targetDir.Id)
+	f := g.targetFile(ctx, name, g.targetDir.Id)
 	if f == nil {
-		return g.createFile(ctx, name, g.targetDir.Id, filepath)
+		return g.createOrUpdateFile(ctx, name, g.targetDir.Id, "", filepath, true)
 	} else {
-		return g.updateFile(ctx, name, f.Id, filepath)
+		return g.createOrUpdateFile(ctx, name, "", f.Id, filepath, false)
 	}
 }
 
@@ -248,10 +251,30 @@ func (g GDrive) UploadHtmlFile(ctx context.Context, name string, filepath string
 	ctx, span := tracer.Start(ctx, "GDrive.UploadHtmlFile")
 	defer span.End()
 
-	f := g.getTargetFile(ctx, name, g.htmlDir.Id)
+	f := g.targetFile(ctx, name, g.htmlDir.Id)
 	if f == nil {
-		return g.createFile(ctx, name, g.htmlCreateParentID(), filepath)
+		return g.createOrUpdateFile(ctx, name, g.htmlCreateParentID(), "", filepath, true)
 	} else {
-		return g.updateFile(ctx, name, f.Id, filepath)
+		return g.createOrUpdateFile(ctx, name, "", f.Id, filepath, false)
 	}
+}
+
+func (g GDrive) targetFile(ctx context.Context, filename, dirid string) *drive.File {
+	if g.getTargetFileFn != nil {
+		return g.getTargetFileFn(ctx, filename, dirid)
+	}
+	return g.getTargetFile(ctx, filename, dirid)
+}
+
+func (g GDrive) createOrUpdateFile(ctx context.Context, name, parent, id, filepath string, create bool) error {
+	if create {
+		if g.createFileFn != nil {
+			return g.createFileFn(ctx, name, parent, filepath)
+		}
+		return g.createFile(ctx, name, parent, filepath)
+	}
+	if g.updateFileFn != nil {
+		return g.updateFileFn(ctx, name, id, filepath)
+	}
+	return g.updateFile(ctx, name, id, filepath)
 }
