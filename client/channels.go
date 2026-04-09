@@ -99,7 +99,10 @@ func (c *Channels) CreateHtmlFile(ctx context.Context, channelName string, gdriv
 	ctx, span := tracer.Start(ctx, "CreateHtmlFile")
 	defer span.End()
 
-	filePath := c.createChannelFilePath(c.createChannelFileName(channelName))
+	filePath, err := c.safeJoinUnderBase(c.createChannelFileName(channelName))
+	if err != nil {
+		return fmt.Errorf("invalid channel path: %w", err)
+	}
 
 	//jsonl読み込み
 	f, err := os.Open(filePath)
@@ -123,7 +126,10 @@ func (c *Channels) CreateHtmlFile(ctx context.Context, channelName string, gdriv
 		return fmt.Errorf("テンプレートファイルのオープンに失敗： %w", err)
 	}
 	htmlFileName := fmt.Sprintf("%s.html", channelName)
-	htmlFilePath := path.Join(c.basedir, HtmlDir, htmlFileName)
+	htmlFilePath, err := c.safeJoinUnderBase(filepath.Join(HtmlDir, htmlFileName))
+	if err != nil {
+		return fmt.Errorf("invalid html file path: %w", err)
+	}
 	if err = os.MkdirAll(filepath.Dir(htmlFilePath), os.ModePerm); err != nil {
 		return fmt.Errorf("HTMLディレクトリの作成に失敗： %w", err)
 	}
@@ -140,6 +146,30 @@ func (c *Channels) CreateHtmlFile(ctx context.Context, channelName string, gdriv
 		return fmt.Errorf(" Google DriveへのHTMLファイルアップロードに失敗： %w", err)
 	}
 	return nil
+}
+
+func (c *Channels) safeJoinUnderBase(relPath string) (string, error) {
+	cleaned := filepath.Clean(relPath)
+	if filepath.IsAbs(cleaned) {
+		return "", fmt.Errorf("absolute path is not allowed: %s", relPath)
+	}
+
+	baseAbs, err := filepath.Abs(c.basedir)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve base directory: %w", err)
+	}
+	resolvedAbs, err := filepath.Abs(filepath.Join(baseAbs, cleaned))
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve target path: %w", err)
+	}
+	rel, err := filepath.Rel(baseAbs, resolvedAbs)
+	if err != nil {
+		return "", fmt.Errorf("failed to compare base and target path: %w", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path escapes base directory: %s", relPath)
+	}
+	return resolvedAbs, nil
 }
 
 func parseEntriesFromJSONL(r io.Reader) ([]Entry, error) {
