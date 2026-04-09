@@ -154,7 +154,7 @@ func (c *Channels) CreateHtmlFile(ctx context.Context, channelName string, gdriv
 	}
 	_ = out.Close()
 	if err := gdrive.UploadHtmlFile(ctx, htmlFileName, htmlFilePath); err != nil {
-		return fmt.Errorf("Google DriveへのHTMLファイルアップロードに失敗： %w", err)
+		return fmt.Errorf("google DriveへのHTMLファイルアップロードに失敗： %w", err)
 	}
 	return nil
 }
