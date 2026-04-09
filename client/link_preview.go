@@ -44,6 +44,8 @@ func (c *Channels) attachLinkPreviews(ctx context.Context, entries []Entry) []En
 		err     error
 	}
 	cache := map[string]cachedPreview{}
+	cacheChanged := false
+	now := time.Now().UTC()
 
 	for i := range entries {
 		if !entries[i].IsLinkOnlyMessage() {
@@ -56,12 +58,32 @@ func (c *Channels) attachLinkPreviews(ctx context.Context, entries []Entry) []En
 
 		cached, ok := cache[urls[0]]
 		if !ok {
-			preview, err := c.previewFetcher(ctx, urls[0])
-			cached = cachedPreview{
-				preview: preview,
-				err:     err,
+			if c.previewCache != nil {
+				preview, hit, changed := c.previewCache.Get(urls[0], now)
+				if changed {
+					cacheChanged = true
+				}
+				if hit {
+					cached = cachedPreview{
+						preview: preview,
+						err:     nil,
+					}
+					cache[urls[0]] = cached
+				}
 			}
-			cache[urls[0]] = cached
+			if cached.preview == nil {
+				preview, err := c.previewFetcher(ctx, urls[0])
+				cached = cachedPreview{
+					preview: preview,
+					err:     err,
+				}
+				if c.previewCache != nil && err == nil && preview != nil {
+					if c.previewCache.Set(urls[0], preview, now) {
+						cacheChanged = true
+					}
+				}
+				cache[urls[0]] = cached
+			}
 		}
 
 		if cached.err != nil {
@@ -73,6 +95,11 @@ func (c *Channels) attachLinkPreviews(ctx context.Context, entries []Entry) []En
 			continue
 		}
 		entries[i].Preview = cached.preview
+	}
+	if c.previewCache != nil && cacheChanged {
+		if err := c.previewCache.Save(); err != nil {
+			log.Printf("link previewキャッシュ保存失敗: %v", err)
+		}
 	}
 	return entries
 }

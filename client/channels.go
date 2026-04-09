@@ -23,6 +23,7 @@ type Channels struct {
 	basedir        string
 	authorID       string
 	previewFetcher linkPreviewFetchFunc
+	previewCache   *linkPreviewCache
 }
 
 // MarkdownExportResult は /make-md で生成した成果物の情報です。
@@ -40,11 +41,17 @@ const (
 )
 
 // NewChannels は Channels 構造体の新しいインスタンスを作成します。
-func NewChannels(basedir, authorID string) (*Channels, error) {
+func NewChannels(basedir, authorID string, previewCacheTTL time.Duration, previewCacheMaxEntries int) (*Channels, error) {
+	previewCache, err := newLinkPreviewCache(basedir, previewCacheTTL, previewCacheMaxEntries)
+	if err != nil {
+		log.Printf("リンクプレビューキャッシュを無効化して継続: %v", err)
+		previewCache = nil
+	}
 	return &Channels{
 		basedir:        basedir,
 		authorID:       authorID,
 		previewFetcher: defaultLinkPreviewFetcher,
+		previewCache:   previewCache,
 	}, nil
 }
 

@@ -14,14 +14,17 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 )
 
 type Config struct {
-	AppToken string `json:"app_token"`
-	BotToken string `json:"bot_token"`
-	Debug    bool   `json:"debug"`
-	BaseDir  string `json:"base_dir"`
-	AuthorID string `json:"author_id"`
+	AppToken                   string `json:"app_token"`
+	BotToken                   string `json:"bot_token"`
+	Debug                      bool   `json:"debug"`
+	BaseDir                    string `json:"base_dir"`
+	AuthorID                   string `json:"author_id"`
+	LinkPreviewCacheTTLHours   int    `json:"link_preview_cache_ttl_hours"`
+	LinkPreviewCacheMaxEntries int    `json:"link_preview_cache_max_entries"`
 }
 
 const ConfigDir = "./config"
@@ -60,11 +63,31 @@ func (c Config) validate() error {
 	if c.AuthorID == "" {
 		errs = append(errs, "author_id must be set.")
 	}
+	if c.LinkPreviewCacheTTLHours < 0 {
+		errs = append(errs, "link_preview_cache_ttl_hours must be >= 0.")
+	}
+	if c.LinkPreviewCacheMaxEntries < 0 {
+		errs = append(errs, "link_preview_cache_max_entries must be >= 0.")
+	}
 
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "\n"))
 	}
 	return nil
+}
+
+func (c Config) linkPreviewCacheTTL() time.Duration {
+	if c.LinkPreviewCacheTTLHours <= 0 {
+		return defaultLinkPreviewCacheTTL
+	}
+	return time.Duration(c.LinkPreviewCacheTTLHours) * time.Hour
+}
+
+func (c Config) linkPreviewCacheMaxEntries() int {
+	if c.LinkPreviewCacheMaxEntries <= 0 {
+		return defaultLinkPreviewCacheMaxEntries
+	}
+	return c.LinkPreviewCacheMaxEntries
 }
 
 func loadConfigFromFile(configPath string) (Config, error) {
@@ -151,7 +174,12 @@ func Run(ctx context.Context) error {
 	}
 
 	// 既存のチャンネルデータを読み込む
-	channels, err := NewChannels(config.BaseDir, config.AuthorID)
+	channels, err := NewChannels(
+		config.BaseDir,
+		config.AuthorID,
+		config.linkPreviewCacheTTL(),
+		config.linkPreviewCacheMaxEntries(),
+	)
 	if err != nil {
 		return err
 	}
