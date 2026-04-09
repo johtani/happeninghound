@@ -4,10 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -216,7 +220,7 @@ func SlashCommandHandler(channels *Channels, gdrive *GDrive, basedir string) soc
 			return
 		}
 
-		msg := executeCommand(ctx, ev, channels, gdrive, basedir)
+		msg := executeCommand(ctx, ev, channels, gdrive, basedir, client)
 
 		if _, _, err := client.PostMessage(ev.ChannelID, slack.MsgOptionText(msg, false)); err != nil {
 			fmt.Printf("######### : failed posting message: %v\n", err)
@@ -230,7 +234,7 @@ func slashCommandFromEventData(data interface{}) (slack.SlashCommand, bool) {
 	return ev, ok
 }
 
-func executeCommand(ctx context.Context, ev slack.SlashCommand, channels *Channels, gdrive *GDrive, basedir string) string {
+func executeCommand(ctx context.Context, ev slack.SlashCommand, channels *Channels, gdrive *GDrive, basedir string, client *socketmode.Client) string {
 	ctx, span := tracer.Start(ctx, "executeCommand")
 	defer span.End()
 
@@ -266,6 +270,42 @@ func executeCommand(ctx context.Context, ev slack.SlashCommand, channels *Channe
 			}
 		}
 		msg = fmt.Sprintf("%s\n%s\n", msg, strings.Join(files, "\n"))
+	} else if strings.HasPrefix(ev.Command, "/make-md") {
+		msg = "Created markdown zip file"
+		channelName, since, err := resolveMakeMDParams(ev)
+		if err != nil {
+			return fmt.Sprintf("%v\nError: %v", msg, err.Error())
+		}
+		if err := validateChannelName(channelName); err != nil {
+			return fmt.Sprintf("%v\nError: %v", msg, err.Error())
+		}
+
+		result, err := channels.CreateMarkdownZip(channelName, channels.authorID, since)
+		if err != nil {
+			fmt.Printf("######### : Got error %v\n", err)
+			return fmt.Sprintf("%v\nError: %v", msg, err.Error())
+		}
+		for _, warning := range result.Warnings {
+			log.Printf("[make-md] %s", warning)
+		}
+
+		if client != nil {
+			filename := filepath.Base(result.ZipPath)
+			uploadMsg := fmt.Sprintf("%d entries, %d attachments", result.EntryCount, result.AttachmentCount)
+			if _, err := client.UploadFileV2(slack.UploadFileV2Parameters{
+				Channel:        ev.ChannelID,
+				File:           result.ZipPath,
+				Filename:       filename,
+				Title:          filename,
+				InitialComment: uploadMsg,
+			}); err != nil {
+				fmt.Printf("######### : failed to upload markdown zip: %v\n", err)
+				return fmt.Sprintf("%v\nError: failed to upload zip: %v", msg, err)
+			}
+			msg = fmt.Sprintf("%s\nUploaded: %s (%s)", msg, filename, uploadMsg)
+		} else {
+			msg = fmt.Sprintf("%s\nSaved to: %s", msg, result.ZipPath)
+		}
 	} else {
 		msg = "Unknown command..."
 	}
@@ -288,6 +328,55 @@ func validateChannelName(channelName string) error {
 		return fmt.Errorf("invalid channel name %q: allowed pattern is [a-z0-9_-]+", channelName)
 	}
 	return nil
+}
+
+func resolveMakeMDParams(ev slack.SlashCommand) (string, *time.Time, error) {
+	channelName := strings.TrimSpace(ev.ChannelName)
+	args := strings.Fields(strings.TrimSpace(ev.Text))
+	if len(args) == 0 {
+		return channelName, nil, nil
+	}
+	if len(args) > 2 {
+		return "", nil, fmt.Errorf("invalid args: expected /make-md [channel] [period] or /make-md [period]")
+	}
+
+	if len(args) == 1 {
+		if since, ok, err := parseRelativePeriod(args[0]); err != nil {
+			return "", nil, err
+		} else if ok {
+			return channelName, since, nil
+		}
+		return strings.TrimSpace(strings.TrimSuffix(args[0], ".jsonl")), nil, nil
+	}
+
+	since, ok, err := parseRelativePeriod(args[1])
+	if err != nil {
+		return "", nil, err
+	}
+	if !ok {
+		return "", nil, fmt.Errorf("invalid period: %q (e.g. 30d)", args[1])
+	}
+	return strings.TrimSpace(strings.TrimSuffix(args[0], ".jsonl")), since, nil
+}
+
+func parseRelativePeriod(raw string) (*time.Time, bool, error) {
+	period := strings.TrimSpace(strings.ToLower(raw))
+	if period == "" {
+		return nil, false, nil
+	}
+	matches := regexp.MustCompile(`^(\d+)d$`).FindStringSubmatch(period)
+	if len(matches) != 2 {
+		return nil, false, nil
+	}
+	days, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return nil, true, fmt.Errorf("invalid period: %q", raw)
+	}
+	if days <= 0 {
+		return nil, true, fmt.Errorf("invalid period: %q (days must be > 0)", raw)
+	}
+	since := time.Now().UTC().AddDate(0, 0, -days)
+	return &since, true, nil
 }
 
 func htmlFileNames(basedir string) map[string]bool {
