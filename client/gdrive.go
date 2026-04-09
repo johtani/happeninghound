@@ -13,11 +13,11 @@ import (
 )
 
 type GDrive struct {
-	client    *drive.Service
-	baseDir   string
-	targetDir *drive.File
-	imageDir  *drive.File
-	htmlDir   *drive.File
+	client          *drive.Service
+	baseDir         string
+	targetDir       *drive.File
+	imageDir        *drive.File
+	htmlDir         *drive.File
 	getTargetFileFn func(ctx context.Context, filename, dirid string) *drive.File
 	createFileFn    func(ctx context.Context, name, parent, filepath string) error
 	updateFileFn    func(ctx context.Context, name, id, filepath string) error
