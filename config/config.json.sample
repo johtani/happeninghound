@@ -1,5 +1,7 @@
 {
   "debug": false,
   "base_dir": "/YOUR/PATH/TO",
-  "author_id": "YOUR_SLACK_USER_ID"
+  "author_id": "YOUR_SLACK_USER_ID",
+  "link_preview_cache_ttl_hours": 168,
+  "link_preview_cache_max_entries": 1000
 }
