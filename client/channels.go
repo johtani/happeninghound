@@ -1,6 +1,7 @@
 package client
 
 import (
+	"archive/zip"
 	"bufio"
 	"context"
 	"encoding/json"
@@ -22,6 +23,15 @@ type Channels struct {
 	basedir        string
 	authorID       string
 	previewFetcher linkPreviewFetchFunc
+}
+
+// MarkdownExportResult は /make-md で生成した成果物の情報です。
+type MarkdownExportResult struct {
+	ZipPath          string
+	EntryCount       int
+	AttachmentCount  int
+	AttachmentFailed int
+	Warnings         []string
 }
 
 const (
@@ -146,6 +156,211 @@ func (c *Channels) CreateHtmlFile(ctx context.Context, channelName string, gdriv
 		return fmt.Errorf(" Google DriveへのHTMLファイルアップロードに失敗： %w", err)
 	}
 	return nil
+}
+
+// CreateMarkdownZip はチャンネルのJSONLからMarkdownと添付ファイルZIPを生成します。
+func (c *Channels) CreateMarkdownZip(channelName string, authorID string, since *time.Time) (MarkdownExportResult, error) {
+	filePath, err := c.safeJoinUnderBase(c.createChannelFileName(channelName))
+	if err != nil {
+		return MarkdownExportResult{}, fmt.Errorf("invalid channel path: %w", err)
+	}
+
+	f, err := os.Open(filePath)
+	if err != nil {
+		return MarkdownExportResult{}, fmt.Errorf("ファイル %s のオープンに失敗： %w", filePath, err)
+	}
+	defer f.Close()
+
+	entries, err := parseEntriesFromJSONL(f)
+	if err != nil {
+		return MarkdownExportResult{}, err
+	}
+	filtered := filterEntriesSince(entries, since)
+
+	if err := os.MkdirAll(filepath.Join(c.basedir, "exports"), os.ModePerm); err != nil {
+		return MarkdownExportResult{}, fmt.Errorf("エクスポートディレクトリの作成に失敗: %w", err)
+	}
+	now := time.Now().UTC()
+	zipFilename := fmt.Sprintf("%s-%s.zip", channelName, now.Format("20060102-150405"))
+	zipPath := filepath.Join(c.basedir, "exports", zipFilename)
+	out, err := os.OpenFile(zipPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	if err != nil {
+		return MarkdownExportResult{}, fmt.Errorf("zipファイルの作成に失敗: %w", err)
+	}
+	defer out.Close()
+
+	zw := zip.NewWriter(out)
+	md, err := renderMarkdown(channelName, authorID, filtered, now, since)
+	if err != nil {
+		_ = zw.Close()
+		return MarkdownExportResult{}, err
+	}
+	indexWriter, err := zw.Create("index.md")
+	if err != nil {
+		_ = zw.Close()
+		return MarkdownExportResult{}, fmt.Errorf("index.md の作成に失敗: %w", err)
+	}
+	if _, err := indexWriter.Write([]byte(md)); err != nil {
+		_ = zw.Close()
+		return MarkdownExportResult{}, fmt.Errorf("index.md への書き込みに失敗: %w", err)
+	}
+
+	warnings, attachmentCount, attachmentFailed := c.addAttachmentsToZip(zw, filtered)
+	if err := zw.Close(); err != nil {
+		return MarkdownExportResult{}, fmt.Errorf("zipクローズに失敗: %w", err)
+	}
+
+	return MarkdownExportResult{
+		ZipPath:          zipPath,
+		EntryCount:       len(filtered),
+		AttachmentCount:  attachmentCount,
+		AttachmentFailed: attachmentFailed,
+		Warnings:         warnings,
+	}, nil
+}
+
+func filterEntriesSince(entries []Entry, since *time.Time) []Entry {
+	if since == nil {
+		return entries
+	}
+	filtered := make([]Entry, 0, len(entries))
+	for _, entry := range entries {
+		ts, ok := parseEntryTimestamp(entry.Timestamp)
+		if !ok {
+			continue
+		}
+		if ts.Before(*since) {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
+}
+
+func parseEntryTimestamp(raw string) (time.Time, bool) {
+	splits := strings.Split(raw, ".")
+	if len(splits) < 1 {
+		return time.Time{}, false
+	}
+	sec, err := strconv.ParseInt(splits[0], 10, 64)
+	if err != nil {
+		return time.Time{}, false
+	}
+	nano := int64(0)
+	if len(splits) >= 2 {
+		fracStr := splits[1]
+		const nanoDigits = 9
+		if len(fracStr) < nanoDigits {
+			fracStr = fracStr + strings.Repeat("0", nanoDigits-len(fracStr))
+		} else if len(fracStr) > nanoDigits {
+			fracStr = fracStr[:nanoDigits]
+		}
+		nano, err = strconv.ParseInt(fracStr, 10, 64)
+		if err != nil {
+			return time.Time{}, false
+		}
+	}
+	return time.Unix(sec, nano).UTC(), true
+}
+
+func renderMarkdown(channelName string, authorID string, entries []Entry, generatedAt time.Time, since *time.Time) (string, error) {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("# %s\n\n", channelName))
+	b.WriteString(fmt.Sprintf("- generated_at_utc: %s\n", generatedAt.Format(time.RFC3339)))
+	if since != nil {
+		b.WriteString(fmt.Sprintf("- since_utc: %s\n", since.Format(time.RFC3339)))
+	}
+	b.WriteString(fmt.Sprintf("- entries: %d\n\n", len(entries)))
+
+	for _, entry := range entries {
+		b.WriteString("## Entry\n\n")
+		b.WriteString(fmt.Sprintf("- datetime_utc: %s\n", entry.Timestamp2String()))
+		b.WriteString(fmt.Sprintf("- author: %s\n\n", authorID))
+		fence := markdownFenceFor(entry.Message)
+		b.WriteString(fence)
+		b.WriteString("\n")
+		b.WriteString(entry.Message)
+		if !strings.HasSuffix(entry.Message, "\n") {
+			b.WriteString("\n")
+		}
+		b.WriteString(fence)
+		b.WriteString("\n\n")
+	}
+
+	return b.String(), nil
+}
+
+func markdownFenceFor(message string) string {
+	maxTicks := 0
+	current := 0
+	for _, r := range message {
+		if r == '`' {
+			current++
+			if current > maxTicks {
+				maxTicks = current
+			}
+			continue
+		}
+		current = 0
+	}
+	if maxTicks < 3 {
+		return "```text"
+	}
+	return strings.Repeat("`", maxTicks+1) + "text"
+}
+
+func (c *Channels) addAttachmentsToZip(zw *zip.Writer, entries []Entry) ([]string, int, int) {
+	seen := make(map[string]bool)
+	warnings := make([]string, 0)
+	successCount := 0
+	failedCount := 0
+
+	for _, entry := range entries {
+		for _, rel := range entry.Files {
+			normalized := filepath.Clean(rel)
+			if filepath.IsAbs(normalized) || normalized == ".." || strings.HasPrefix(normalized, ".."+string(filepath.Separator)) {
+				warnings = append(warnings, fmt.Sprintf("skip invalid attachment path: %s", rel))
+				failedCount++
+				continue
+			}
+			if seen[normalized] {
+				continue
+			}
+			seen[normalized] = true
+
+			srcPath, err := c.safeJoinUnderBase(normalized)
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("attachment path resolution failed: %s (%v)", rel, err))
+				failedCount++
+				continue
+			}
+			src, err := os.Open(srcPath)
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("attachment open failed: %s (%v)", rel, err))
+				failedCount++
+				continue
+			}
+
+			archivePath := path.Join("attachments", filepath.ToSlash(normalized))
+			dst, err := zw.Create(archivePath)
+			if err != nil {
+				_ = src.Close()
+				warnings = append(warnings, fmt.Sprintf("attachment zip entry failed: %s (%v)", rel, err))
+				failedCount++
+				continue
+			}
+			if _, err := io.Copy(dst, src); err != nil {
+				_ = src.Close()
+				warnings = append(warnings, fmt.Sprintf("attachment copy failed: %s (%v)", rel, err))
+				failedCount++
+				continue
+			}
+			_ = src.Close()
+			successCount++
+		}
+	}
+
+	return warnings, successCount, failedCount
 }
 
 func (c *Channels) safeJoinUnderBase(relPath string) (string, error) {

@@ -1,12 +1,15 @@
 package client
 
 import (
+	"archive/zip"
 	"fmt"
 	"html/template"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestEntry_MessageWithLinkTag(t *testing.T) {
@@ -211,5 +214,107 @@ func TestChannels_safeJoinUnderBase(t *testing.T) {
 				t.Fatalf("safeJoinUnderBase() path = %q, want prefix %q", got, baseDir)
 			}
 		})
+	}
+}
+
+func TestFilterEntriesSince(t *testing.T) {
+	since := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	entries := []Entry{
+		{Timestamp: "1711670400.000000"}, // 2024-03-29
+		{Timestamp: "1775001600.000000"}, // 2026-04-01
+		{Timestamp: "1775088000.000000"}, // 2026-04-02
+		{Timestamp: "invalid"},
+	}
+
+	got := filterEntriesSince(entries, &since)
+	if len(got) != 2 {
+		t.Fatalf("filterEntriesSince() len = %d, want 2", len(got))
+	}
+}
+
+func TestRenderMarkdown_PreserveNewlinesAndBackticks(t *testing.T) {
+	now := time.Date(2026, 4, 9, 12, 0, 0, 0, time.UTC)
+	entry := Entry{
+		Timestamp: "1775001600.123456",
+		Message:   "line1\n```go\nfmt.Println(\"x\")\n```\nline2",
+	}
+	md, err := renderMarkdown("general", "U123", []Entry{entry}, now, nil)
+	if err != nil {
+		t.Fatalf("renderMarkdown() error = %v", err)
+	}
+	if !strings.Contains(md, "line1\n```go\nfmt.Println(\"x\")\n```\nline2") {
+		t.Fatalf("renderMarkdown() message body not preserved: %s", md)
+	}
+	if !strings.Contains(md, "datetime_utc:") {
+		t.Fatalf("renderMarkdown() missing timestamp section")
+	}
+}
+
+func TestCreateMarkdownZip_IncludesIndexAndAttachments(t *testing.T) {
+	baseDir := t.TempDir()
+	c := &Channels{basedir: baseDir}
+
+	jsonl := `{"timestamp":"1775001600.123456","message":"hello","channel":{"id":"C1","name":"general"},"files":["images/general/a.png"]}` + "\n"
+	if err := os.WriteFile(filepath.Join(baseDir, "general.jsonl"), []byte(jsonl), 0644); err != nil {
+		t.Fatalf("write jsonl: %v", err)
+	}
+	imgPath := filepath.Join(baseDir, "images", "general", "a.png")
+	if err := os.MkdirAll(filepath.Dir(imgPath), os.ModePerm); err != nil {
+		t.Fatalf("mkdir image dir: %v", err)
+	}
+	if err := os.WriteFile(imgPath, []byte("png-data"), 0644); err != nil {
+		t.Fatalf("write image: %v", err)
+	}
+
+	result, err := c.CreateMarkdownZip("general", "U123", nil)
+	if err != nil {
+		t.Fatalf("CreateMarkdownZip() error = %v", err)
+	}
+	if result.EntryCount != 1 {
+		t.Fatalf("CreateMarkdownZip() EntryCount = %d, want 1", result.EntryCount)
+	}
+	if result.AttachmentCount != 1 {
+		t.Fatalf("CreateMarkdownZip() AttachmentCount = %d, want 1", result.AttachmentCount)
+	}
+
+	zr, err := zip.OpenReader(result.ZipPath)
+	if err != nil {
+		t.Fatalf("open zip: %v", err)
+	}
+	defer zr.Close()
+
+	entries := make(map[string]bool)
+	for _, f := range zr.File {
+		entries[f.Name] = true
+	}
+	if !entries["index.md"] {
+		t.Fatalf("zip missing index.md")
+	}
+	if !entries["attachments/images/general/a.png"] {
+		t.Fatalf("zip missing attachment entry")
+	}
+}
+
+func TestCreateMarkdownZip_MissingAttachmentContinues(t *testing.T) {
+	baseDir := t.TempDir()
+	c := &Channels{basedir: baseDir}
+
+	jsonl := `{"timestamp":"1775001600.123456","message":"hello","channel":{"id":"C1","name":"general"},"files":["images/general/missing.png"]}` + "\n"
+	if err := os.WriteFile(filepath.Join(baseDir, "general.jsonl"), []byte(jsonl), 0644); err != nil {
+		t.Fatalf("write jsonl: %v", err)
+	}
+
+	result, err := c.CreateMarkdownZip("general", "U123", nil)
+	if err != nil {
+		t.Fatalf("CreateMarkdownZip() error = %v", err)
+	}
+	if result.AttachmentCount != 0 {
+		t.Fatalf("CreateMarkdownZip() AttachmentCount = %d, want 0", result.AttachmentCount)
+	}
+	if result.AttachmentFailed == 0 {
+		t.Fatalf("CreateMarkdownZip() AttachmentFailed = 0, want > 0")
+	}
+	if len(result.Warnings) == 0 {
+		t.Fatalf("CreateMarkdownZip() Warnings empty, want warning")
 	}
 }

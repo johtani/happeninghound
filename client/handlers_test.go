@@ -1,7 +1,9 @@
 package client
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -116,6 +118,126 @@ func TestSlashCommandFromEventData(t *testing.T) {
 	}
 }
 
+func TestResolveMakeMDParams(t *testing.T) {
+	tests := []struct {
+		name        string
+		ev          slack.SlashCommand
+		wantChannel string
+		wantSince   bool
+		wantErr     bool
+	}{
+		{
+			name: "no args uses current channel",
+			ev: slack.SlashCommand{
+				ChannelName: "general",
+			},
+			wantChannel: "general",
+			wantSince:   false,
+			wantErr:     false,
+		},
+		{
+			name: "single period arg",
+			ev: slack.SlashCommand{
+				ChannelName: "general",
+				Text:        "30d",
+			},
+			wantChannel: "general",
+			wantSince:   true,
+			wantErr:     false,
+		},
+		{
+			name: "single channel arg",
+			ev: slack.SlashCommand{
+				ChannelName: "general",
+				Text:        "dev-team.jsonl",
+			},
+			wantChannel: "dev-team",
+			wantSince:   false,
+			wantErr:     false,
+		},
+		{
+			name: "channel and period",
+			ev: slack.SlashCommand{
+				ChannelName: "general",
+				Text:        "dev-team 7d",
+			},
+			wantChannel: "dev-team",
+			wantSince:   true,
+			wantErr:     false,
+		},
+		{
+			name: "too many args",
+			ev: slack.SlashCommand{
+				ChannelName: "general",
+				Text:        "a b c",
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid second arg",
+			ev: slack.SlashCommand{
+				ChannelName: "general",
+				Text:        "dev-team 12h",
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ch, since, err := resolveMakeMDParams(tt.ev)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("resolveMakeMDParams() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			if ch != tt.wantChannel {
+				t.Fatalf("resolveMakeMDParams() channel = %q, want %q", ch, tt.wantChannel)
+			}
+			if (since != nil) != tt.wantSince {
+				t.Fatalf("resolveMakeMDParams() since nil=%v, wantSince %v", since == nil, tt.wantSince)
+			}
+		})
+	}
+}
+
+func TestParseRelativePeriod(t *testing.T) {
+	tests := []struct {
+		name      string
+		raw       string
+		wantFound bool
+		wantErr   bool
+	}{
+		{name: "valid", raw: "30d", wantFound: true, wantErr: false},
+		{name: "valid upper", raw: "7D", wantFound: true, wantErr: false},
+		{name: "empty", raw: "", wantFound: false, wantErr: false},
+		{name: "wrong suffix", raw: "30h", wantFound: false, wantErr: false},
+		{name: "zero day", raw: "0d", wantFound: true, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			since, found, err := parseRelativePeriod(tt.raw)
+			if found != tt.wantFound {
+				t.Fatalf("parseRelativePeriod() found = %v, want %v", found, tt.wantFound)
+			}
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseRelativePeriod() err = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantFound && !tt.wantErr {
+				if since == nil {
+					t.Fatalf("parseRelativePeriod() since is nil")
+				}
+				diff := time.Since(*since)
+				if diff < 0 || diff > 31*24*time.Hour {
+					t.Fatalf("parseRelativePeriod() unexpected since: %v", *since)
+				}
+			}
+		})
+	}
+}
+
 func TestSkipMessage(t *testing.T) {
 	botMention := "<@B999>"
 	channels := &Channels{authorID: "U123"}
@@ -185,5 +307,31 @@ func TestSkipMessage(t *testing.T) {
 				t.Fatalf("skipMessage() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestParseRelativePeriodPatternOnlyD(t *testing.T) {
+	_, found, err := parseRelativePeriod("15w")
+	if err != nil {
+		t.Fatalf("parseRelativePeriod() unexpected err: %v", err)
+	}
+	if found {
+		t.Fatalf("parseRelativePeriod() found = true, want false")
+	}
+
+	_, found, err = parseRelativePeriod(" 15d ")
+	if err != nil {
+		t.Fatalf("parseRelativePeriod() unexpected err: %v", err)
+	}
+	if !found {
+		t.Fatalf("parseRelativePeriod() found = false, want true")
+	}
+
+	_, found, err = parseRelativePeriod(strings.Repeat("1", 100) + "d")
+	if !found {
+		t.Fatalf("parseRelativePeriod() found = false, want true")
+	}
+	if err == nil {
+		t.Fatalf("parseRelativePeriod() err = nil, want error for overflow")
 	}
 }
