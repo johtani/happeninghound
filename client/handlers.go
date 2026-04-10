@@ -24,7 +24,7 @@ import (
 
 var channelNamePattern = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
-const showFilesTimeLayout = "2006-01-02 15:04:05"
+const showFilesTimeLayout = "2006-01-02 15:04:05 MST"
 
 type fileContextGetter interface {
 	GetFileContext(ctx context.Context, downloadURL string, writer io.Writer) error

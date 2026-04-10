@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -488,6 +489,30 @@ func TestBuildShowFilesMessage_IncludesUpdatedAtAndCount(t *testing.T) {
 	}
 	if strings.Index(msg, "alpha.jsonl") > strings.Index(msg, "zeta.jsonl") {
 		t.Fatalf("message should be sorted by file name: %q", msg)
+	}
+}
+
+func TestBuildShowFilesMessage_ReturnsErrorWhenBaseDirMissing(t *testing.T) {
+	_, err := buildShowFilesMessage(filepath.Join(t.TempDir(), "missing"))
+	if err == nil {
+		t.Fatalf("buildShowFilesMessage() error = nil, want non-nil")
+	}
+}
+
+func TestExecuteCommand_ShowFilesErrorIncludesMessage(t *testing.T) {
+	msg := executeCommand(
+		context.Background(),
+		slack.SlashCommand{Command: "/show-files"},
+		nil,
+		nil,
+		filepath.Join(t.TempDir(), "missing"),
+		nil,
+	)
+	if !strings.Contains(msg, "Files are ...") {
+		t.Fatalf("executeCommand() missing header: %q", msg)
+	}
+	if !strings.Contains(msg, "Error:") {
+		t.Fatalf("executeCommand() missing error line: %q", msg)
 	}
 }
 
