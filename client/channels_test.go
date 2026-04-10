@@ -285,7 +285,9 @@ func TestCreateMarkdownZip_IncludesIndexAndAttachments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open zip: %v", err)
 	}
-	defer zr.Close()
+	defer func() {
+		_ = zr.Close()
+	}()
 
 	entries := make(map[string]bool)
 	for _, f := range zr.File {
@@ -338,8 +340,8 @@ func TestCreateHtmlFile_WithSinceFiltersEntries(t *testing.T) {
 
 	g := &GDrive{
 		htmlDir: &drive.File{Id: "html-dir-id"},
-		getTargetFileFn: func(ctx context.Context, filename, dirid string) *drive.File {
-			return nil
+		getTargetFileFn: func(ctx context.Context, filename, dirid string) (*drive.File, error) {
+			return nil, nil
 		},
 		createFileFn: func(ctx context.Context, name, parent, filePath string) error {
 			return nil

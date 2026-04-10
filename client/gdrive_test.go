@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"go.opentelemetry.io/otel"
@@ -56,8 +57,8 @@ func TestGDrive_UploadHtmlFile_CreateUsesHtmlDirAsParent(t *testing.T) {
 	var gotParent string
 	g := GDrive{
 		htmlDir: &drive.File{Id: "html-dir-id"},
-		getTargetFileFn: func(ctx context.Context, filename, dirid string) *drive.File {
-			return nil
+		getTargetFileFn: func(ctx context.Context, filename, dirid string) (*drive.File, error) {
+			return nil, nil
 		},
 		createFileFn: func(ctx context.Context, name, parent, filepath string) error {
 			called = true
@@ -84,8 +85,8 @@ func TestGDrive_UploadHtmlFile_UpdateWhenFileExists(t *testing.T) {
 	updateCalled := false
 	g := GDrive{
 		htmlDir: &drive.File{Id: "html-dir-id"},
-		getTargetFileFn: func(ctx context.Context, filename, dirid string) *drive.File {
-			return &drive.File{Id: "existing-file-id", Name: filename}
+		getTargetFileFn: func(ctx context.Context, filename, dirid string) (*drive.File, error) {
+			return &drive.File{Id: "existing-file-id", Name: filename}, nil
 		},
 		createFileFn: func(ctx context.Context, name, parent, filepath string) error {
 			createCalled = true
@@ -108,5 +109,47 @@ func TestGDrive_UploadHtmlFile_UpdateWhenFileExists(t *testing.T) {
 	}
 	if !updateCalled {
 		t.Fatal("updateFile was not called")
+	}
+}
+
+func TestGDrive_UploadFile_TargetFileSearchError(t *testing.T) {
+	tracer = otel.GetTracerProvider().Tracer("client-test")
+
+	expected := errors.New("drive api temporary failure")
+	g := GDrive{
+		targetDir: &drive.File{Id: "target-dir-id"},
+		getTargetFileFn: func(ctx context.Context, filename, dirid string) (*drive.File, error) {
+			return nil, expected
+		},
+		createFileFn: func(ctx context.Context, name, parent, filepath string) error {
+			t.Fatal("createFile should not be called when targetFile search fails")
+			return nil
+		},
+	}
+
+	err := g.UploadFile(context.Background(), "test.txt", "/tmp/test.txt")
+	if err == nil {
+		t.Fatal("expected error when targetFile search fails, got nil")
+	}
+}
+
+func TestGDrive_UploadHtmlFile_TargetFileSearchError(t *testing.T) {
+	tracer = otel.GetTracerProvider().Tracer("client-test")
+
+	expected := errors.New("drive api temporary failure")
+	g := GDrive{
+		htmlDir: &drive.File{Id: "html-dir-id"},
+		getTargetFileFn: func(ctx context.Context, filename, dirid string) (*drive.File, error) {
+			return nil, expected
+		},
+		createFileFn: func(ctx context.Context, name, parent, filepath string) error {
+			t.Fatal("createFile should not be called when targetFile search fails")
+			return nil
+		},
+	}
+
+	err := g.UploadHtmlFile(context.Background(), "index.html", "/tmp/index.html")
+	if err == nil {
+		t.Fatal("expected error when targetFile search fails, got nil")
 	}
 }
