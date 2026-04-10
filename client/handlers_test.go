@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path"
 	"strings"
 	"testing"
 	"time"
@@ -432,6 +434,60 @@ func TestSkipMessage(t *testing.T) {
 				t.Fatalf("skipMessage() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestBuildShowFilesMessage_IncludesUpdatedAtAndCount(t *testing.T) {
+	baseDir := t.TempDir()
+	if err := os.WriteFile(path.Join(baseDir, "zeta.jsonl"), []byte("{}"), 0644); err != nil {
+		t.Fatalf("WriteFile(zeta) error = %v", err)
+	}
+	if err := os.WriteFile(path.Join(baseDir, "alpha.jsonl"), []byte("{}"), 0644); err != nil {
+		t.Fatalf("WriteFile(alpha) error = %v", err)
+	}
+	if err := os.WriteFile(path.Join(baseDir, "notes.txt"), []byte("ignore"), 0644); err != nil {
+		t.Fatalf("WriteFile(notes) error = %v", err)
+	}
+	if err := os.MkdirAll(path.Join(baseDir, HtmlDir), os.ModePerm); err != nil {
+		t.Fatalf("MkdirAll(html) error = %v", err)
+	}
+	if err := os.WriteFile(path.Join(baseDir, HtmlDir, "alpha.html"), []byte("<html></html>"), 0644); err != nil {
+		t.Fatalf("WriteFile(alpha.html) error = %v", err)
+	}
+
+	alphaTime := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	zetaTime := time.Date(2026, 1, 3, 4, 5, 6, 0, time.UTC)
+	if err := os.Chtimes(path.Join(baseDir, "alpha.jsonl"), alphaTime, alphaTime); err != nil {
+		t.Fatalf("Chtimes(alpha) error = %v", err)
+	}
+	if err := os.Chtimes(path.Join(baseDir, "zeta.jsonl"), zetaTime, zetaTime); err != nil {
+		t.Fatalf("Chtimes(zeta) error = %v", err)
+	}
+
+	msg, err := buildShowFilesMessage(baseDir)
+	if err != nil {
+		t.Fatalf("buildShowFilesMessage() error = %v", err)
+	}
+	alphaExpected := alphaTime.In(time.Local).Format(showFilesTimeLayout)
+	zetaExpected := zetaTime.In(time.Local).Format(showFilesTimeLayout)
+
+	if !strings.Contains(msg, "Files are ...") {
+		t.Fatalf("message missing header: %q", msg)
+	}
+	if !strings.Contains(msg, ":o: alpha.jsonl (updated: "+alphaExpected+")") {
+		t.Fatalf("message missing alpha line: %q", msg)
+	}
+	if !strings.Contains(msg, ":x: zeta.jsonl (updated: "+zetaExpected+")") {
+		t.Fatalf("message missing zeta line: %q", msg)
+	}
+	if !strings.Contains(msg, "count: 2/2") {
+		t.Fatalf("message missing count: %q", msg)
+	}
+	if strings.Contains(msg, "notes.txt") {
+		t.Fatalf("message should not include non-jsonl file: %q", msg)
+	}
+	if strings.Index(msg, "alpha.jsonl") > strings.Index(msg, "zeta.jsonl") {
+		t.Fatalf("message should be sorted by file name: %q", msg)
 	}
 }
 
