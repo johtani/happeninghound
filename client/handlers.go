@@ -156,7 +156,9 @@ func downloadSingleImageFile(ctx context.Context, client fileContextGetter, chan
 	if err != nil {
 		return "", fmt.Errorf("attachment index=%d stage=create_local_file: %w", index, err)
 	}
-	defer localFile.Close()
+	defer func() {
+		_ = localFile.Close()
+	}()
 
 	if err := client.GetFileContext(ctx, file.URLPrivateDownload, localFile); err != nil {
 		return "", fmt.Errorf("attachment index=%d stage=download url=%s: %w", index, file.URLPrivateDownload, err)

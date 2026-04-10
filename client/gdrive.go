@@ -18,7 +18,7 @@ type GDrive struct {
 	targetDir         *drive.File
 	imageDir          *drive.File
 	htmlDir           *drive.File
-	getTargetFileFn   func(ctx context.Context, filename, dirid string) *drive.File
+	getTargetFileFn   func(ctx context.Context, filename, dirid string) (*drive.File, error)
 	createImageFileFn func(ctx context.Context, name, parent, filepath string) error
 	createFileFn      func(ctx context.Context, name, parent, filepath string) error
 	updateFileFn      func(ctx context.Context, name, id, filepath string) error
@@ -57,7 +57,10 @@ func NewGDrive(basedir string, credentialsJSON string, credentialsFilePath strin
 	ctx := context.Background()
 
 	// happeninghound フォルダを取得、なければ作成
-	targetDir := getTargetDir(ctx, "happeninghound", client)
+	targetDir, err := getTargetDir(ctx, "happeninghound", client)
+	if err != nil {
+		return nil, fmt.Errorf("happeninghound フォルダ検索に失敗: %w", err)
+	}
 	if targetDir == nil {
 		targetDir, err = createFolder(ctx, "happeninghound", "", client)
 		if err != nil {
@@ -66,7 +69,10 @@ func NewGDrive(basedir string, credentialsJSON string, credentialsFilePath strin
 	}
 
 	// images フォルダを取得、なければ作成
-	imageDir := getTargetDirWithParent(ctx, "images", targetDir.Id, client)
+	imageDir, err := getTargetDirWithParent(ctx, "images", targetDir.Id, client)
+	if err != nil {
+		return nil, fmt.Errorf("images フォルダ検索に失敗: %w", err)
+	}
 	if imageDir == nil {
 		imageDir, err = createFolder(ctx, "images", targetDir.Id, client)
 		if err != nil {
@@ -75,7 +81,10 @@ func NewGDrive(basedir string, credentialsJSON string, credentialsFilePath strin
 	}
 
 	// html フォルダを取得、なければ作成
-	htmlDir := getTargetDirWithParent(ctx, "html", targetDir.Id, client)
+	htmlDir, err := getTargetDirWithParent(ctx, "html", targetDir.Id, client)
+	if err != nil {
+		return nil, fmt.Errorf("html フォルダ検索に失敗: %w", err)
+	}
 	if htmlDir == nil {
 		htmlDir, err = createFolder(ctx, "html", targetDir.Id, client)
 		if err != nil {
@@ -92,37 +101,33 @@ func NewGDrive(basedir string, credentialsJSON string, credentialsFilePath strin
 	}, nil
 }
 
-func getTargetDir(ctx context.Context, dir string, client *drive.Service) *drive.File {
+func getTargetDir(ctx context.Context, dir string, client *drive.Service) (*drive.File, error) {
 	r, err := client.Files.List().Q(
 		fmt.Sprintf("name = '%s' and mimeType = 'application/vnd.google-apps.folder'", dir)).
 		PageSize(1).Fields("nextPageToken, files(id,name)").Context(ctx).Do()
 	if err != nil {
-		fmt.Print("Error in GetTargetDir")
-		fmt.Println(err)
-		return nil
+		return nil, fmt.Errorf("GetTargetDir APIエラー: %w", err)
 	}
 	if len(r.Files) > 0 {
 		f := r.Files[0]
-		return f
+		return f, nil
 	} else {
-		return nil
+		return nil, nil
 	}
 }
 
-func getTargetDirWithParent(ctx context.Context, dir, parentId string, client *drive.Service) *drive.File {
+func getTargetDirWithParent(ctx context.Context, dir, parentId string, client *drive.Service) (*drive.File, error) {
 	r, err := client.Files.List().Q(
 		fmt.Sprintf("name = '%s' and '%s' in parents and mimeType = 'application/vnd.google-apps.folder'", dir, parentId)).
 		PageSize(1).Fields("nextPageToken, files(id,name)").Context(ctx).Do()
 	if err != nil {
-		fmt.Println("Error in GetTargetDirWithParent")
-		fmt.Println(err)
-		return nil
+		return nil, fmt.Errorf("GetTargetDirWithParent APIエラー: %w", err)
 	}
 	if len(r.Files) > 0 {
 		f := r.Files[0]
-		return f
+		return f, nil
 	} else {
-		return nil
+		return nil, nil
 	}
 }
 
@@ -139,20 +144,18 @@ func createFolder(ctx context.Context, name, parentId string, client *drive.Serv
 	return dir, nil
 }
 
-func (g GDrive) getTargetFile(ctx context.Context, filename, dirid string) *drive.File {
+func (g GDrive) getTargetFile(ctx context.Context, filename, dirid string) (*drive.File, error) {
 	r, err := g.client.Files.List().Q(
 		fmt.Sprintf("name = '%s' and '%s' in parents", filename, dirid)).
 		PageSize(1).Fields("nextPageToken, files(id,name)").Context(ctx).Do()
 	if err != nil {
-		fmt.Print("Error in GetTargetFile")
-		fmt.Println(err)
-		return nil
+		return nil, fmt.Errorf("GetTargetFile APIエラー: %w", err)
 	}
 	if len(r.Files) > 0 {
 		f := r.Files[0]
-		return f
+		return f, nil
 	} else {
-		return nil
+		return nil, nil
 	}
 }
 
@@ -161,7 +164,9 @@ func (g GDrive) createFile(ctx context.Context, name string, parent string, file
 	if err != nil {
 		return err
 	}
-	defer local.Close()
+	defer func() {
+		_ = local.Close()
+	}()
 	driveFile, err := g.client.Files.Create(&drive.File{Name: name, Parents: []string{parent}}).Media(local).Context(ctx).Do()
 	if err != nil {
 		return err
@@ -175,7 +180,9 @@ func (g GDrive) updateFile(ctx context.Context, name, id string, filepath string
 	if err != nil {
 		return err
 	}
-	defer local.Close()
+	defer func() {
+		_ = local.Close()
+	}()
 	driveFile, err := g.client.Files.Update(id, &drive.File{Name: name}).Media(local).Context(ctx).Do()
 	if err != nil {
 		return err
@@ -186,9 +193,11 @@ func (g GDrive) updateFile(ctx context.Context, name, id string, filepath string
 
 // ディレクトリを作成する
 func (g GDrive) createDir(ctx context.Context, name string, parentId string) (*drive.File, error) {
-	dir := getTargetDirWithParent(ctx, name, parentId, g.client)
+	dir, err := getTargetDirWithParent(ctx, name, parentId, g.client)
+	if err != nil {
+		return nil, err
+	}
 	if dir == nil {
-		var err error
 		dir, err = g.client.Files.Create(
 			&drive.File{Name: name, Parents: []string{parentId}, MimeType: "application/vnd.google-apps.folder"}).Context(ctx).Do()
 		if err != nil {
@@ -217,7 +226,9 @@ func (g GDrive) CreateImageFile(ctx context.Context, name string, parent string,
 	if err != nil {
 		return err
 	}
-	defer local.Close()
+	defer func() {
+		_ = local.Close()
+	}()
 	channel, err := g.createDir(ctx, parent, g.imageDir.Id)
 	if err != nil {
 		return err
@@ -239,7 +250,10 @@ func (g GDrive) UploadFile(ctx context.Context, name string, filepath string) er
 	ctx, span := tracer.Start(ctx, "GDrive.UploadFile")
 	defer span.End()
 
-	f := g.targetFile(ctx, name, g.targetDir.Id)
+	f, err := g.targetFile(ctx, name, g.targetDir.Id)
+	if err != nil {
+		return fmt.Errorf("target file 検索に失敗: %w", err)
+	}
 	if f == nil {
 		return g.createOrUpdateFile(ctx, name, g.targetDir.Id, "", filepath, true)
 	} else {
@@ -256,7 +270,10 @@ func (g GDrive) UploadHtmlFile(ctx context.Context, name string, filepath string
 	ctx, span := tracer.Start(ctx, "GDrive.UploadHtmlFile")
 	defer span.End()
 
-	f := g.targetFile(ctx, name, g.htmlDir.Id)
+	f, err := g.targetFile(ctx, name, g.htmlDir.Id)
+	if err != nil {
+		return fmt.Errorf("target html file 検索に失敗: %w", err)
+	}
 	if f == nil {
 		return g.createOrUpdateFile(ctx, name, g.htmlCreateParentID(), "", filepath, true)
 	} else {
@@ -264,7 +281,7 @@ func (g GDrive) UploadHtmlFile(ctx context.Context, name string, filepath string
 	}
 }
 
-func (g GDrive) targetFile(ctx context.Context, filename, dirid string) *drive.File {
+func (g GDrive) targetFile(ctx context.Context, filename, dirid string) (*drive.File, error) {
 	if g.getTargetFileFn != nil {
 		return g.getTargetFileFn(ctx, filename, dirid)
 	}

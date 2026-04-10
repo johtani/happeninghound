@@ -95,7 +95,9 @@ func loadConfigFromFile(configPath string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	// JSONデコード
 	decoder := json.NewDecoder(file)
@@ -144,12 +146,16 @@ func initHtml(config Config) error {
 		if err != nil {
 			return fmt.Errorf("CSS %s のオープンに失敗： %v", CSSFile, err)
 		}
-		defer src.Close()
+		defer func() {
+			_ = src.Close()
+		}()
 		dst, err := os.Create(path.Join(config.BaseDir, HtmlDir, CSSFile))
 		if err != nil {
 			return fmt.Errorf("CSS %s の作成に失敗： %v", CSSFile, err)
 		}
-		defer dst.Close()
+		defer func() {
+			_ = dst.Close()
+		}()
 		_, err = io.Copy(dst, src)
 		if err != nil {
 			return fmt.Errorf("CSS %s へのコピーに失敗： %v", CSSFile, err)

@@ -66,8 +66,10 @@ func (c *Channels) AppendMessage(ctx context.Context, channelName, jsonstring st
 	if err != nil {
 		return fmt.Errorf("ファイル %s のオープンに失敗： %w", filePath, err)
 	}
-	defer f.Close()
-	if _, err := f.WriteString(fmt.Sprintf("%v\n", jsonstring)); err != nil {
+	defer func() {
+		_ = f.Close()
+	}()
+	if _, err := fmt.Fprintf(f, "%s\n", jsonstring); err != nil {
 		return fmt.Errorf("ファイル %s のオープンに失敗： %w", filePath, err)
 	}
 	return gdrive.UploadFile(ctx, channelFileName, filePath)
@@ -126,7 +128,9 @@ func (c *Channels) CreateHtmlFile(ctx context.Context, channelName string, gdriv
 	if err != nil {
 		return fmt.Errorf("ファイル %s のオープンに失敗： %w", filePath, err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 	contents, err := parseEntriesFromJSONL(f)
 	if err != nil {
 		return err
@@ -155,7 +159,9 @@ func (c *Channels) CreateHtmlFile(ctx context.Context, channelName string, gdriv
 	if err != nil {
 		return fmt.Errorf("HTMLファイルのオープンに失敗： %w", err)
 	}
-	defer out.Close()
+	defer func() {
+		_ = out.Close()
+	}()
 	if err := t.Execute(out, values); err != nil {
 		return fmt.Errorf("テンプレートのExecuteに失敗： %w", err)
 	}
@@ -177,7 +183,9 @@ func (c *Channels) CreateMarkdownZip(channelName string, authorID string, since 
 	if err != nil {
 		return MarkdownExportResult{}, fmt.Errorf("ファイル %s のオープンに失敗： %w", filePath, err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	entries, err := parseEntriesFromJSONL(f)
 	if err != nil {
@@ -195,7 +203,9 @@ func (c *Channels) CreateMarkdownZip(channelName string, authorID string, since 
 	if err != nil {
 		return MarkdownExportResult{}, fmt.Errorf("zipファイルの作成に失敗: %w", err)
 	}
-	defer out.Close()
+	defer func() {
+		_ = out.Close()
+	}()
 
 	zw := zip.NewWriter(out)
 	md, err := renderMarkdown(channelName, authorID, filtered, now, since)
@@ -273,17 +283,17 @@ func parseEntryTimestamp(raw string) (time.Time, bool) {
 
 func renderMarkdown(channelName string, authorID string, entries []Entry, generatedAt time.Time, since *time.Time) (string, error) {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("# %s\n\n", channelName))
-	b.WriteString(fmt.Sprintf("- generated_at_utc: %s\n", generatedAt.Format(time.RFC3339)))
+	_, _ = fmt.Fprintf(&b, "# %s\n\n", channelName)
+	_, _ = fmt.Fprintf(&b, "- generated_at_utc: %s\n", generatedAt.Format(time.RFC3339))
 	if since != nil {
-		b.WriteString(fmt.Sprintf("- since_utc: %s\n", since.Format(time.RFC3339)))
+		_, _ = fmt.Fprintf(&b, "- since_utc: %s\n", since.Format(time.RFC3339))
 	}
-	b.WriteString(fmt.Sprintf("- entries: %d\n\n", len(entries)))
+	_, _ = fmt.Fprintf(&b, "- entries: %d\n\n", len(entries))
 
 	for _, entry := range entries {
 		b.WriteString("## Entry\n\n")
-		b.WriteString(fmt.Sprintf("- datetime_utc: %s\n", entry.Timestamp2String()))
-		b.WriteString(fmt.Sprintf("- author: %s\n\n", authorID))
+		_, _ = fmt.Fprintf(&b, "- datetime_utc: %s\n", entry.Timestamp2String())
+		_, _ = fmt.Fprintf(&b, "- author: %s\n\n", authorID)
 		fence := markdownFenceFor(entry.Message)
 		b.WriteString(fence)
 		b.WriteString("\n")
