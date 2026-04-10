@@ -140,8 +140,17 @@ func initHtml(config Config) error {
 	if err := os.MkdirAll(path.Join(config.BaseDir, HtmlDir), os.ModePerm); err != nil {
 		return fmt.Errorf("HTMLディレクトリの作成に失敗： %v", err)
 	}
-	// CSSFileコピー（なければ）
-	if _, err := os.Stat(path.Join(config.BaseDir, HtmlDir, CSSFile)); err != nil {
+	return ensureCSSFile(config.BaseDir, os.Stat)
+}
+
+func ensureCSSFile(baseDir string, statFn func(string) (os.FileInfo, error)) error {
+	cssPath := path.Join(baseDir, HtmlDir, CSSFile)
+	// CSSFileコピー（未存在の場合のみ）
+	if _, err := statFn(cssPath); err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("CSS %s の状態確認に失敗： %v", CSSFile, err)
+		}
+
 		src, err := templateFiles.Open(path.Join(TemplateDir, CSSFile))
 		if err != nil {
 			return fmt.Errorf("CSS %s のオープンに失敗： %v", CSSFile, err)
@@ -149,7 +158,7 @@ func initHtml(config Config) error {
 		defer func() {
 			_ = src.Close()
 		}()
-		dst, err := os.Create(path.Join(config.BaseDir, HtmlDir, CSSFile))
+		dst, err := os.Create(cssPath)
 		if err != nil {
 			return fmt.Errorf("CSS %s の作成に失敗： %v", CSSFile, err)
 		}
