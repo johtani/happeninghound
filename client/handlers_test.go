@@ -1,6 +1,9 @@
 package client
 
 import (
+	"context"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +12,20 @@ import (
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
 )
+
+type stubFileContextGetter struct {
+	failByURL map[string]error
+}
+
+func (s stubFileContextGetter) GetFileContext(_ context.Context, downloadURL string, writer io.Writer) error {
+	if err, ok := s.failByURL[downloadURL]; ok {
+		return err
+	}
+	if _, err := io.WriteString(writer, "ok"); err != nil {
+		return err
+	}
+	return nil
+}
 
 func TestResolvedChannelName(t *testing.T) {
 	tests := []struct {
@@ -441,5 +458,101 @@ func TestParseRelativePeriodPatternOnlyD(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatalf("parseRelativePeriod() err = nil, want error for overflow")
+	}
+}
+
+func TestDownloadImageFiles_AllSuccess(t *testing.T) {
+	channels := &Channels{basedir: t.TempDir()}
+	getter := stubFileContextGetter{}
+	uploadCalls := 0
+	gdrive := &GDrive{
+		createImageFileFn: func(ctx context.Context, name, parent, filepath string) error {
+			uploadCalls++
+			return nil
+		},
+	}
+	files := []slack.File{
+		{URLPrivateDownload: "https://example.com/1", Filetype: "png"},
+		{URLPrivateDownload: "https://example.com/2", Filetype: "jpg"},
+	}
+
+	got, err := downloadImageFiles(context.Background(), getter, "general", channels, files, "1711670400.000000", gdrive)
+	if err != nil {
+		t.Fatalf("downloadImageFiles() error = %v, want nil", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("downloadImageFiles() len = %d, want 2", len(got))
+	}
+	if uploadCalls != 2 {
+		t.Fatalf("upload calls = %d, want 2", uploadCalls)
+	}
+}
+
+func TestDownloadImageFiles_PartialFailureKeepsSuccesses(t *testing.T) {
+	channels := &Channels{basedir: t.TempDir()}
+	getter := stubFileContextGetter{
+		failByURL: map[string]error{
+			"https://example.com/2": errors.New("download failed"),
+		},
+	}
+	uploadCalls := 0
+	gdrive := &GDrive{
+		createImageFileFn: func(ctx context.Context, name, parent, filepath string) error {
+			uploadCalls++
+			return nil
+		},
+	}
+	files := []slack.File{
+		{URLPrivateDownload: "https://example.com/1", Filetype: "png"},
+		{URLPrivateDownload: "https://example.com/2", Filetype: "jpg"},
+	}
+
+	got, err := downloadImageFiles(context.Background(), getter, "general", channels, files, "1711670400.000000", gdrive)
+	if err == nil {
+		t.Fatal("downloadImageFiles() error = nil, want non-nil")
+	}
+	if len(got) != 1 {
+		t.Fatalf("downloadImageFiles() len = %d, want 1", len(got))
+	}
+	if uploadCalls != 1 {
+		t.Fatalf("upload calls = %d, want 1", uploadCalls)
+	}
+	if !strings.Contains(err.Error(), "index=1") || !strings.Contains(err.Error(), "stage=download") {
+		t.Fatalf("downloadImageFiles() error = %q, want index/stage info", err.Error())
+	}
+}
+
+func TestDownloadImageFiles_AllFailure(t *testing.T) {
+	channels := &Channels{basedir: t.TempDir()}
+	getter := stubFileContextGetter{
+		failByURL: map[string]error{
+			"https://example.com/1": errors.New("download failed 1"),
+			"https://example.com/2": errors.New("download failed 2"),
+		},
+	}
+	uploadCalls := 0
+	gdrive := &GDrive{
+		createImageFileFn: func(ctx context.Context, name, parent, filepath string) error {
+			uploadCalls++
+			return nil
+		},
+	}
+	files := []slack.File{
+		{URLPrivateDownload: "https://example.com/1", Filetype: "png"},
+		{URLPrivateDownload: "https://example.com/2", Filetype: "jpg"},
+	}
+
+	got, err := downloadImageFiles(context.Background(), getter, "general", channels, files, "1711670400.000000", gdrive)
+	if err == nil {
+		t.Fatal("downloadImageFiles() error = nil, want non-nil")
+	}
+	if len(got) != 0 {
+		t.Fatalf("downloadImageFiles() len = %d, want 0", len(got))
+	}
+	if uploadCalls != 0 {
+		t.Fatalf("upload calls = %d, want 0", uploadCalls)
+	}
+	if !strings.Contains(err.Error(), "index=0") || !strings.Contains(err.Error(), "index=1") {
+		t.Fatalf("downloadImageFiles() error = %q, want both failed indexes", err.Error())
 	}
 }

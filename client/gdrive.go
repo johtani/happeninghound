@@ -13,14 +13,15 @@ import (
 )
 
 type GDrive struct {
-	client          *drive.Service
-	baseDir         string
-	targetDir       *drive.File
-	imageDir        *drive.File
-	htmlDir         *drive.File
-	getTargetFileFn func(ctx context.Context, filename, dirid string) *drive.File
-	createFileFn    func(ctx context.Context, name, parent, filepath string) error
-	updateFileFn    func(ctx context.Context, name, id, filepath string) error
+	client            *drive.Service
+	baseDir           string
+	targetDir         *drive.File
+	imageDir          *drive.File
+	htmlDir           *drive.File
+	getTargetFileFn   func(ctx context.Context, filename, dirid string) *drive.File
+	createImageFileFn func(ctx context.Context, name, parent, filepath string) error
+	createFileFn      func(ctx context.Context, name, parent, filepath string) error
+	updateFileFn      func(ctx context.Context, name, id, filepath string) error
 }
 
 func (g GDrive) htmlCreateParentID() string {
@@ -201,6 +202,10 @@ func (g GDrive) createDir(ctx context.Context, name string, parentId string) (*d
 
 // CreateImageFile 画像ファイルをimageDirにアップロードする
 func (g GDrive) CreateImageFile(ctx context.Context, name string, parent string, filepath string) error {
+	if g.createImageFileFn != nil {
+		return g.createImageFileFn(ctx, name, parent, filepath)
+	}
+
 	if g.imageDir == nil {
 		return fmt.Errorf("imageDir が初期化されていません。Google Drive上に images フォルダが存在するか確認してください")
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path"
@@ -21,6 +22,10 @@ import (
 )
 
 var channelNamePattern = regexp.MustCompile(`^[a-z0-9_-]+$`)
+
+type fileContextGetter interface {
+	GetFileContext(ctx context.Context, downloadURL string, writer io.Writer) error
+}
 
 // MessageEventHandler チャンネルごとのメッセージ受信ハンドラー: MessageEventHandler はメッセージイベントを処理します。
 func MessageEventHandler(channels *Channels, botID string, gdrive *GDrive) socketmode.SocketmodeHandlerFunc {
@@ -82,9 +87,8 @@ func MessageEventHandler(channels *Channels, botID string, gdrive *GDrive) socke
 			files, err := downloadImageFiles(ctx, client, channel.Name, channels, p.Message.Files, p.EventTimeStamp, gdrive)
 			if err != nil {
 				client.Debugf("ファイルダウンロードエラー: %v", err)
-			} else {
-				data.Files = files
 			}
+			data.Files = files
 
 		}
 
@@ -123,7 +127,7 @@ func skipMessage(p *slackevents.MessageEvent, botMention string, client *socketm
 	return false
 }
 
-func downloadImageFiles(ctx context.Context, client *socketmode.Client, channelName string, channels *Channels, files []slack.File, timestamp string, gdrive *GDrive) ([]string, error) {
+func downloadImageFiles(ctx context.Context, client fileContextGetter, channelName string, channels *Channels, files []slack.File, timestamp string, gdrive *GDrive) ([]string, error) {
 	ctx, span := tracer.Start(ctx, "downloadImageFiles")
 	defer span.End()
 
@@ -131,30 +135,12 @@ func downloadImageFiles(ctx context.Context, client *socketmode.Client, channelN
 	errors := make([]string, 0)
 	for i, file := range files {
 		if len(file.URLPrivateDownload) > 0 {
-			localFile, err := channels.CreateLocalFile(channelName, timestamp, i, file.Filetype)
+			filename, err := downloadSingleImageFile(ctx, client, channelName, channels, file, timestamp, i, gdrive)
 			if err != nil {
 				errors = append(errors, err.Error())
-			} else {
-				err = client.GetFileContext(ctx, file.URLPrivateDownload, localFile)
-				localFile.Close()
-				if err != nil {
-					errors = append(errors, err.Error())
-				}
-				filenames = append(filenames, channels.CreateFilePathForMessage(
-					channelName,
-					timestamp,
-					i,
-					file.Filetype))
-				err = gdrive.CreateImageFile(ctx, channels.CreateImageFileName(timestamp, i, file.Filetype), channelName,
-					channels.CreateImageFilePath(
-						channelName,
-						timestamp,
-						i,
-						file.Filetype))
-				if err != nil {
-					errors = append(errors, err.Error())
-				}
+				continue
 			}
+			filenames = append(filenames, filename)
 		}
 	}
 	if len(errors) > 0 {
@@ -163,6 +149,29 @@ func downloadImageFiles(ctx context.Context, client *socketmode.Client, channelN
 	}
 
 	return filenames, nil
+}
+
+func downloadSingleImageFile(ctx context.Context, client fileContextGetter, channelName string, channels *Channels, file slack.File, timestamp string, index int, gdrive *GDrive) (string, error) {
+	localFile, err := channels.CreateLocalFile(channelName, timestamp, index, file.Filetype)
+	if err != nil {
+		return "", fmt.Errorf("attachment index=%d stage=create_local_file: %w", index, err)
+	}
+	defer localFile.Close()
+
+	if err := client.GetFileContext(ctx, file.URLPrivateDownload, localFile); err != nil {
+		return "", fmt.Errorf("attachment index=%d stage=download url=%s: %w", index, file.URLPrivateDownload, err)
+	}
+
+	if err := gdrive.CreateImageFile(
+		ctx,
+		channels.CreateImageFileName(timestamp, index, file.Filetype),
+		channelName,
+		channels.CreateImageFilePath(channelName, timestamp, index, file.Filetype),
+	); err != nil {
+		return "", fmt.Errorf("attachment index=%d stage=upload: %w", index, err)
+	}
+
+	return channels.CreateFilePathForMessage(channelName, timestamp, index, file.Filetype), nil
 }
 
 func BotJoinedEventHandler(botID string) socketmode.SocketmodeHandlerFunc {
