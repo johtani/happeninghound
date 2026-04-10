@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -23,8 +24,16 @@ import (
 
 var channelNamePattern = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
+const showFilesTimeLayout = "2006-01-02 15:04:05 MST"
+
 type fileContextGetter interface {
 	GetFileContext(ctx context.Context, downloadURL string, writer io.Writer) error
+}
+
+type showFileEntry struct {
+	name      string
+	hasHTML   bool
+	updatedAt time.Time
 }
 
 // MessageEventHandler チャンネルごとのメッセージ受信ハンドラー: MessageEventHandler はメッセージイベントを処理します。
@@ -266,24 +275,13 @@ func executeCommand(ctx context.Context, ev slack.SlashCommand, channels *Channe
 			msg = fmt.Sprintf("%v\nError: %v", msg, err.Error())
 		}
 	} else if strings.HasPrefix(ev.Command, "/show-files") {
-		msg = "Files are ..."
-		dirReader, err := os.ReadDir(basedir)
+		built, err := buildShowFilesMessage(basedir)
 		if err != nil {
 			fmt.Printf("######### : Got error %v\n", err)
-			msg = fmt.Sprintf("%v\nError: %v", msg, err.Error())
+			msg = fmt.Sprintf("Files are ...\nError: %v", err.Error())
+		} else {
+			msg = built
 		}
-		var files []string
-		htmls := htmlFileNames(basedir)
-		for _, entry := range dirReader {
-			if file, ok := strings.CutSuffix(entry.Name(), ".jsonl"); ok {
-				if _, ok := htmls[file]; ok {
-					files = append(files, fmt.Sprintf(":o: %s", entry.Name()))
-				} else {
-					files = append(files, fmt.Sprintf(":x: %s", entry.Name()))
-				}
-			}
-		}
-		msg = fmt.Sprintf("%s\n%s\n", msg, strings.Join(files, "\n"))
 	} else if strings.HasPrefix(ev.Command, "/make-md") {
 		msg = "Created markdown zip file"
 		channelName, since, err := resolveMakeMDParams(ev)
@@ -439,6 +437,55 @@ func htmlFileNames(basedir string) map[string]bool {
 		}
 	}
 	return files
+}
+
+func buildShowFilesMessage(basedir string) (string, error) {
+	files, err := collectShowFileEntries(basedir)
+	if err != nil {
+		return "", err
+	}
+
+	lines := []string{"Files are ..."}
+	total := len(files)
+	shown := len(files)
+	for _, f := range files {
+		status := ":x:"
+		if f.hasHTML {
+			status = ":o:"
+		}
+		lines = append(lines, fmt.Sprintf("%s %s (updated: %s)", status, f.name, f.updatedAt.Format(showFilesTimeLayout)))
+	}
+	lines = append(lines, fmt.Sprintf("count: %d/%d", total, shown))
+	return strings.Join(lines, "\n") + "\n", nil
+}
+
+func collectShowFileEntries(basedir string) ([]showFileEntry, error) {
+	dirReader, err := os.ReadDir(basedir)
+	if err != nil {
+		return nil, err
+	}
+	htmls := htmlFileNames(basedir)
+	files := make([]showFileEntry, 0)
+	for _, entry := range dirReader {
+		fileBase, ok := strings.CutSuffix(entry.Name(), ".jsonl")
+		if !ok {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get file info: %w", err)
+		}
+		files = append(files, showFileEntry{
+			name:      entry.Name(),
+			hasHTML:   htmls[fileBase],
+			updatedAt: info.ModTime(),
+		})
+	}
+
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].name < files[j].name
+	})
+	return files, nil
 }
 
 func ChannelArchiveHandler(channels *Channels, gdrive *GDrive) socketmode.SocketmodeHandlerFunc {
