@@ -1,4 +1,6 @@
 {
+  "app_token": "xapp-XXXXXXXXXXXXXXXXXXXXXX",
+  "bot_token": "xoxb-XXXXXXXXXXXXXXXXXXXXXX",
   "debug": false,
   "base_dir": "/YOUR/PATH/TO",
   "author_id": "YOUR_SLACK_USER_ID",
